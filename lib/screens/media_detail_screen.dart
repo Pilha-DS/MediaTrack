@@ -30,6 +30,58 @@ class _MediaDetailScreenState extends State<MediaDetailScreen> {
     }
   }
 
+  Future<void> _showStatusDialog(BuildContext context) async {
+    final updatedItem = MediaService.getItem(_item.id);
+    if (updatedItem == null) return;
+
+    final newStatus = await showDialog<MediaStatus>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Alterar Status'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: MediaStatus.values.map((status) {
+              final tempItem = MediaItem(
+                id: '',
+                title: '',
+                type: MediaType.serie,
+                createdAt: DateTime.now(),
+                updatedAt: DateTime.now(),
+                status: status,
+              );
+              return ListTile(
+                leading: Container(
+                  width: 16,
+                  height: 16,
+                  decoration: BoxDecoration(
+                    color: tempItem.statusColor,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                title: Text(tempItem.statusName),
+                selected: updatedItem.status == status,
+                onTap: () => Navigator.pop(context, status),
+              );
+            }).toList(),
+          ),
+        ),
+      ),
+    );
+
+    if (newStatus != null && newStatus != updatedItem.status) {
+      updatedItem.status = newStatus;
+      // Atualizar isCompleted baseado no status
+      if (newStatus == MediaStatus.concluido) {
+        updatedItem.isCompleted = true;
+      } else if (newStatus == MediaStatus.naoIniciado) {
+        updatedItem.isCompleted = false;
+      }
+      await MediaService.updateItem(updatedItem);
+      _refreshItem();
+    }
+  }
+
   Future<void> _deleteItem() async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -163,12 +215,14 @@ class _MediaDetailScreenState extends State<MediaDetailScreen> {
                                   label: 'Avaliação',
                                   value: _item.rating.toStringAsFixed(1),
                                 ),
-                              _InfoItem(
-                                icon: _item.isCompleted
-                                    ? Icons.check_circle
-                                    : Icons.radio_button_unchecked,
-                                label: 'Status',
-                                value: _item.isCompleted ? 'Completo' : 'Em progresso',
+                              GestureDetector(
+                                onTap: () => _showStatusDialog(context),
+                                child: _InfoItem(
+                                  icon: Icons.flag,
+                                  label: 'Status',
+                                  value: _item.statusName,
+                                  color: _item.statusColor,
+                                ),
                               ),
                             ],
                           ),
@@ -314,24 +368,27 @@ class _InfoItem extends StatelessWidget {
   final IconData icon;
   final String label;
   final String value;
+  final Color? color;
 
   const _InfoItem({
     required this.icon,
     required this.label,
     required this.value,
+    this.color,
   });
 
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
-        Icon(icon, size: 24),
+        Icon(icon, size: 24, color: color),
         const SizedBox(height: 4),
         Text(
           value,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.bold,
+            color: color,
           ),
         ),
         Text(

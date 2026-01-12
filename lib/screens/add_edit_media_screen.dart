@@ -27,6 +27,7 @@ class _AddEditMediaScreenState extends State<AddEditMediaScreen> {
   late double _rating;
   late TextEditingController _notesController;
   late bool _isCompleted;
+  late MediaStatus _status;
 
   bool get isEditing => widget.item != null;
 
@@ -48,6 +49,7 @@ class _AddEditMediaScreenState extends State<AddEditMediaScreen> {
       _rating = item.rating;
       _notesController = TextEditingController(text: item.notes);
       _isCompleted = item.isCompleted;
+      _status = item.status;
     } else {
       _titleController = TextEditingController();
       _selectedType = MediaType.serie;
@@ -62,6 +64,7 @@ class _AddEditMediaScreenState extends State<AddEditMediaScreen> {
       _rating = 0.0;
       _notesController = TextEditingController();
       _isCompleted = false;
+      _status = MediaStatus.naoIniciado;
     }
   }
 
@@ -98,6 +101,7 @@ class _AddEditMediaScreenState extends State<AddEditMediaScreen> {
     item.rating = _rating;
     item.notes = _notesController.text;
     item.isCompleted = _isCompleted;
+    item.status = _status;
     item.updatedAt = DateTime.now();
 
     if (isEditing) {
@@ -201,12 +205,66 @@ class _AddEditMediaScreenState extends State<AddEditMediaScreen> {
               ],
             ),
             const SizedBox(height: 16),
+            DropdownButtonFormField<MediaStatus>(
+              value: _status,
+              decoration: const InputDecoration(
+                labelText: 'Status',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.flag),
+              ),
+              items: MediaStatus.values.map((status) {
+                final tempItem = MediaItem(
+                  id: '',
+                  title: '',
+                  type: MediaType.serie,
+                  createdAt: DateTime.now(),
+                  updatedAt: DateTime.now(),
+                  status: status,
+                );
+                return DropdownMenuItem(
+                  value: status,
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 12,
+                        height: 12,
+                        decoration: BoxDecoration(
+                          color: tempItem.statusColor,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(tempItem.statusName),
+                    ],
+                  ),
+                );
+              }).toList(),
+              onChanged: (value) {
+                if (value != null) {
+                  setState(() {
+                    _status = value;
+                    // Atualizar isCompleted baseado no status
+                    if (value == MediaStatus.concluido) {
+                      _isCompleted = true;
+                    } else if (value == MediaStatus.naoIniciado) {
+                      _isCompleted = false;
+                    }
+                  });
+                }
+              },
+            ),
+            const SizedBox(height: 16),
             SwitchListTile(
               title: const Text('Completo'),
               value: _isCompleted,
               onChanged: (value) {
                 setState(() {
                   _isCompleted = value;
+                  if (value) {
+                    _status = MediaStatus.concluido;
+                  } else if (_status == MediaStatus.concluido) {
+                    _status = MediaStatus.naoIniciado;
+                  }
                 });
               },
             ),

@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
 
 part 'media_item.g.dart';
@@ -18,6 +19,26 @@ enum MediaType {
   anime,
   @HiveField(6)
   webtoon,
+}
+
+@HiveType(typeId: 2)
+enum MediaStatus {
+  @HiveField(0)
+  naoIniciado,
+  @HiveField(1)
+  assistindo,
+  @HiveField(2)
+  lendo,
+  @HiveField(3)
+  pausado,
+  @HiveField(4)
+  concluido,
+  @HiveField(5)
+  reassistindo,
+  @HiveField(6)
+  emEspera,
+  @HiveField(7)
+  dropado,
 }
 
 @HiveType(typeId: 1)
@@ -70,6 +91,15 @@ class MediaItem extends HiveObject {
   @HiveField(15)
   bool isCompleted;
 
+  @HiveField(16)
+  MediaStatus status;
+
+  @HiveField(17)
+  bool wasCompleted;
+
+  @HiveField(18)
+  MediaStatus? previousStatus;
+
   MediaItem({
     required this.id,
     required this.title,
@@ -87,6 +117,9 @@ class MediaItem extends HiveObject {
     required this.createdAt,
     required this.updatedAt,
     this.isCompleted = false,
+    this.status = MediaStatus.naoIniciado,
+    this.wasCompleted = false,
+    this.previousStatus,
   });
 
   double get progress {
@@ -147,6 +180,245 @@ class MediaItem extends HiveObject {
         return 'Anime';
       case MediaType.webtoon:
         return 'Webtoon';
+    }
+  }
+
+  String get statusName {
+    switch (status) {
+      case MediaStatus.naoIniciado:
+        return 'Não Iniciado';
+      case MediaStatus.assistindo:
+        return 'Assistindo';
+      case MediaStatus.lendo:
+        return 'Lendo';
+      case MediaStatus.pausado:
+        return 'Pausado';
+      case MediaStatus.concluido:
+        return 'Concluído';
+      case MediaStatus.reassistindo:
+        return 'Reassistindo';
+      case MediaStatus.emEspera:
+        return 'Em Espera';
+      case MediaStatus.dropado:
+        return 'Dropado';
+    }
+  }
+
+  Color get statusColor {
+    switch (status) {
+      case MediaStatus.naoIniciado:
+        return Colors.grey;
+      case MediaStatus.assistindo:
+      case MediaStatus.lendo:
+        return Colors.blue;
+      case MediaStatus.pausado:
+        return Colors.orange;
+      case MediaStatus.concluido:
+        return Colors.green;
+      case MediaStatus.reassistindo:
+        return Colors.purple;
+      case MediaStatus.emEspera:
+        return Colors.amber;
+      case MediaStatus.dropado:
+        return Colors.red;
+    }
+  }
+
+  // Atualiza o status automaticamente baseado no progresso
+  // Não atualiza se estiver em "dropado" ou "pausado"
+  void updateStatusAutomatically() {
+    // Não atualiza se estiver em dropado ou pausado
+    if (status == MediaStatus.dropado || status == MediaStatus.pausado) {
+      return;
+    }
+
+    // Determina o valor atual baseado no tipo
+    int current = 0;
+    int total = 0;
+    
+    switch (type) {
+      case MediaType.serie:
+      case MediaType.anime:
+        current = currentSeason > 0 && currentEpisode > 0 
+            ? (currentSeason - 1) * totalEpisodes + currentEpisode 
+            : 0;
+        total = totalSeasons * totalEpisodes;
+        break;
+      case MediaType.livro:
+      case MediaType.webtoon:
+        current = currentPage;
+        total = totalPages;
+        break;
+      case MediaType.podcast:
+        current = currentEpisode;
+        total = totalEpisodes;
+        break;
+      case MediaType.filme:
+      case MediaType.jogo:
+        // Para filmes e jogos, usa isCompleted diretamente
+        if (isCompleted) {
+          status = MediaStatus.concluido;
+          wasCompleted = true;
+        } else {
+          status = MediaStatus.naoIniciado;
+        }
+        return;
+    }
+
+    // Se current = 0, então não iniciado
+    if (current == 0) {
+      status = MediaStatus.naoIniciado;
+      isCompleted = false;
+      return;
+    }
+
+    // Se chegou ao final
+    if (current >= total && total > 0) {
+      // Se está marcado como completo, atualiza status e marca wasCompleted
+      if (isCompleted) {
+        status = MediaStatus.concluido;
+        wasCompleted = true;
+      }
+      // Se não está completo mas chegou ao final, mantém o status atual
+      // (o usuário pode usar o botão para marcar como concluído)
+      return;
+    }
+
+    // Se current > 0 e não está completo
+    if (wasCompleted) {
+      // Se já foi concluído antes, então está reassistindo/relendo
+      if (type == MediaType.livro || type == MediaType.webtoon) {
+        status = MediaStatus.lendo; // Relendo
+      } else {
+        status = MediaStatus.reassistindo;
+      }
+    } else {
+      // Primeira vez assistindo/lendo
+      if (type == MediaType.livro || type == MediaType.webtoon) {
+        status = MediaStatus.lendo;
+      } else {
+        status = MediaStatus.assistindo;
+      }
+    }
+  }
+
+  // Método para marcar como concluído/não concluído
+  void toggleCompleted() {
+    isCompleted = !isCompleted;
+    if (isCompleted) {
+      status = MediaStatus.concluido;
+      wasCompleted = true;
+    } else {
+      // Se desmarcar como completo, atualiza o status automaticamente
+      updateStatusAutomatically();
+    }
+  }
+
+  // Método para pausar (salva o status anterior)
+  void pause() {
+    if (status == MediaStatus.pausado) return; // Já está pausado
+    
+    // Salva o status anterior (exceto se for dropado ou concluído)
+    // Permite salvar mesmo se for naoIniciado, para poder restaurar depois
+    if (status != MediaStatus.dropado && 
+        status != MediaStatus.concluido) {
+      previousStatus = status;
+    } else {
+      // Se está dropado ou concluído, não pode pausar
+      return;
+    }
+    status = MediaStatus.pausado;
+  }
+
+  // Método para dropar (salva o status anterior)
+  void drop() {
+    if (status == MediaStatus.dropado) return; // Já está dropado
+    
+    // Salva o status anterior apenas se não for um status especial
+    if (status != MediaStatus.concluido) {
+      previousStatus = status;
+    }
+    status = MediaStatus.dropado;
+  }
+
+  // Método para despausar (restaura o status anterior)
+  void unpause() {
+    if (status != MediaStatus.pausado) return;
+    
+    // Se tem status anterior válido, restaura
+    if (previousStatus != null && 
+        previousStatus != MediaStatus.pausado && 
+        previousStatus != MediaStatus.dropado &&
+        previousStatus != MediaStatus.concluido) {
+      status = previousStatus!;
+      previousStatus = null;
+      return;
+    }
+    
+    // Se não tem status anterior válido, calcula baseado no progresso
+    previousStatus = null;
+    
+    // Determina o valor atual baseado no tipo
+    int current = 0;
+    
+    switch (type) {
+      case MediaType.serie:
+      case MediaType.anime:
+        current = currentSeason > 0 && currentEpisode > 0 
+            ? (currentSeason - 1) * totalEpisodes + currentEpisode 
+            : 0;
+        break;
+      case MediaType.livro:
+      case MediaType.webtoon:
+        current = currentPage;
+        break;
+      case MediaType.podcast:
+        current = currentEpisode;
+        break;
+      case MediaType.filme:
+      case MediaType.jogo:
+        status = isCompleted ? MediaStatus.concluido : MediaStatus.naoIniciado;
+        return;
+    }
+    
+    // Se current = 0, então não iniciado
+    if (current == 0) {
+      status = MediaStatus.naoIniciado;
+      return;
+    }
+    
+    // Se current > 0, determina se é primeira vez ou reassistindo/relendo
+    if (wasCompleted) {
+      // Se já foi concluído antes, então está reassistindo/relendo
+      if (type == MediaType.livro || type == MediaType.webtoon) {
+        status = MediaStatus.lendo;
+      } else {
+        status = MediaStatus.reassistindo;
+      }
+    } else {
+      // Primeira vez assistindo/lendo
+      if (type == MediaType.livro || type == MediaType.webtoon) {
+        status = MediaStatus.lendo;
+      } else {
+        status = MediaStatus.assistindo;
+      }
+    }
+  }
+
+  // Método para desdropar (restaura o status anterior)
+  void undrop() {
+    if (status != MediaStatus.dropado) return;
+    
+    if (previousStatus != null && 
+        previousStatus != MediaStatus.pausado && 
+        previousStatus != MediaStatus.dropado &&
+        previousStatus != MediaStatus.concluido) {
+      status = previousStatus!;
+      previousStatus = null;
+    } else {
+      // Se não tem status anterior válido, usa o automático
+      previousStatus = null;
+      updateStatusAutomatically();
     }
   }
 }

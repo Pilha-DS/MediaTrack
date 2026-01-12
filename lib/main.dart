@@ -8,6 +8,7 @@ void main() async {
   await Hive.initFlutter();
   Hive.registerAdapter(MediaItemAdapter());
   Hive.registerAdapter(MediaTypeAdapter());
+  Hive.registerAdapter(MediaStatusAdapter());
   await Hive.openBox<MediaItem>('mediaItems');
   runApp(const MyApp());
 }

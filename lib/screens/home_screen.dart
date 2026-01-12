@@ -92,7 +92,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 _showCompleted = !_showCompleted;
               });
             },
-            tooltip: _showCompleted ? 'Ocultar completos' : 'Mostrar completos',
+            tooltip: _showCompleted ? 'Mostrar padrões' : 'Mostrar ocultos',
           ),
           IconButton(
             icon: const Icon(Icons.flash_on),
@@ -135,10 +135,23 @@ class _HomeScreenState extends State<HomeScreen> {
               ? MediaService.getAllItems()
               : MediaService.getItemsByType(_selectedFilter);
 
-          // Filtrar itens completos se não devem ser mostrados
+          // Filtrar itens: se _showCompleted = false, mostra apenas padrões (não completos/dropados)
+          // se _showCompleted = true, mostra apenas ocultos (completos/dropados)
           var items = allItems;
           if (!_showCompleted) {
-            items = items.where((item) => !item.isCompleted).toList();
+            // Mostrar apenas padrões (não completos e não dropados)
+            items = items.where((item) => 
+              !item.isCompleted && 
+              item.status != MediaStatus.concluido &&
+              item.status != MediaStatus.dropado
+            ).toList();
+          } else {
+            // Mostrar apenas ocultos (completos ou dropados)
+            items = items.where((item) => 
+              item.isCompleted || 
+              item.status == MediaStatus.concluido ||
+              item.status == MediaStatus.dropado
+            ).toList();
           }
 
           if (items.isEmpty) {
@@ -361,6 +374,95 @@ class _MediaItemCardState extends State<_MediaItemCard> {
     }
   }
 
+  Future<void> _showStatusDialog(BuildContext context, MediaItem item) async {
+    final updatedItem = MediaService.getItem(item.id);
+    if (updatedItem == null) return;
+
+    final newStatus = await showDialog<MediaStatus>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Alterar Status'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: MediaStatus.values.map((status) {
+              final tempItem = MediaItem(
+                id: '',
+                title: '',
+                type: MediaType.serie,
+                createdAt: DateTime.now(),
+                updatedAt: DateTime.now(),
+                status: status,
+              );
+              return ListTile(
+                leading: Container(
+                  width: 16,
+                  height: 16,
+                  decoration: BoxDecoration(
+                    color: tempItem.statusColor,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                title: Text(tempItem.statusName),
+                selected: updatedItem.status == status,
+                onTap: () => Navigator.pop(context, status),
+              );
+            }).toList(),
+          ),
+        ),
+      ),
+    );
+
+    if (newStatus != null && newStatus != updatedItem.status) {
+      updatedItem.status = newStatus;
+      // Atualizar isCompleted baseado no status
+      if (newStatus == MediaStatus.concluido) {
+        updatedItem.isCompleted = true;
+        updatedItem.wasCompleted = true;
+      } else if (newStatus == MediaStatus.naoIniciado) {
+        updatedItem.isCompleted = false;
+      }
+      await MediaService.updateItem(updatedItem);
+    }
+  }
+
+  bool _shouldShowCompleteButton() {
+    final item = widget.item;
+    switch (item.type) {
+      case MediaType.serie:
+      case MediaType.anime:
+        if (item.totalSeasons > 0 && item.totalEpisodes > 0) {
+          int current = (item.currentSeason - 1) * item.totalEpisodes + item.currentEpisode;
+          int total = item.totalSeasons * item.totalEpisodes;
+          return current >= total;
+        }
+        return false;
+      case MediaType.livro:
+      case MediaType.webtoon:
+        return item.totalPages > 0 && item.currentPage >= item.totalPages;
+      case MediaType.podcast:
+        return item.totalEpisodes > 0 && item.currentEpisode >= item.totalEpisodes;
+      case MediaType.filme:
+      case MediaType.jogo:
+        return true; // Sempre mostrar para filmes e jogos
+    }
+  }
+
+  Future<void> _toggleCompleted() async {
+    if (_isUpdating) return;
+    setState(() => _isUpdating = true);
+    final updatedItem = MediaService.getItem(widget.item.id);
+    if (updatedItem == null) {
+      setState(() => _isUpdating = false);
+      return;
+    }
+    updatedItem.toggleCompleted();
+    await MediaService.updateItem(updatedItem);
+    if (mounted) {
+      setState(() => _isUpdating = false);
+    }
+  }
+
   Future<void> _updateProgressFromSlider(double newProgress) async {
     if (_isUpdating) return;
     setState(() => _isUpdating = true);
@@ -424,6 +526,82 @@ class _MediaItemCardState extends State<_MediaItemCard> {
         break;
     }
 
+    updatedItem.updateStatusAutomatically();
+    await MediaService.updateItem(updatedItem);
+    if (mounted) {
+      setState(() => _isUpdating = false);
+    }
+  }
+
+  Future<void> _toggleDropped() async {
+    if (_isUpdating) return;
+    
+    final updatedItem = MediaService.getItem(widget.item.id);
+    if (updatedItem == null) return;
+
+    // Se está dropado, apenas desdropar (sem confirmação)
+    if (updatedItem.status == MediaStatus.dropado) {
+      setState(() => _isUpdating = true);
+      // Restaura o status anterior
+      updatedItem.undrop();
+      updatedItem.updatedAt = DateTime.now();
+      await MediaService.updateItem(updatedItem);
+      if (mounted) {
+        setState(() => _isUpdating = false);
+      }
+      return;
+    }
+
+    // Se não está dropado, pedir confirmação antes de dropar
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Confirmar Drop'),
+        content: Text(
+          'Tem certeza que deseja dropar "${updatedItem.title}"?\n\n'
+          'O item ficará oculto da lista principal.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Dropar'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      setState(() => _isUpdating = true);
+      updatedItem.drop();
+      updatedItem.updatedAt = DateTime.now();
+      await MediaService.updateItem(updatedItem);
+      if (mounted) {
+        setState(() => _isUpdating = false);
+      }
+    }
+  }
+
+  Future<void> _togglePaused() async {
+    if (_isUpdating) return;
+    setState(() => _isUpdating = true);
+    final updatedItem = MediaService.getItem(widget.item.id);
+    if (updatedItem == null) {
+      setState(() => _isUpdating = false);
+      return;
+    }
+    if (updatedItem.status == MediaStatus.pausado) {
+      // Se está pausado, restaura o status anterior
+      updatedItem.unpause();
+    } else {
+      // Se não está pausado, marca como pausado (salvando o status anterior)
+      updatedItem.pause();
+    }
+    updatedItem.updatedAt = DateTime.now();
     await MediaService.updateItem(updatedItem);
     if (mounted) {
       setState(() => _isUpdating = false);
@@ -490,6 +668,46 @@ class _MediaItemCardState extends State<_MediaItemCard> {
                                 ),
                               ),
                             ),
+                            const SizedBox(width: 8),
+                            GestureDetector(
+                              onTap: () => _showStatusDialog(context, widget.item),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: widget.item.statusColor.withOpacity(0.2),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: widget.item.statusColor.withOpacity(0.5),
+                                    width: 1,
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Container(
+                                      width: 8,
+                                      height: 8,
+                                      decoration: BoxDecoration(
+                                        color: widget.item.statusColor,
+                                        shape: BoxShape.circle,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      widget.item.statusName,
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: widget.item.statusColor,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
                             if (widget.item.rating > 0) ...[
                               const SizedBox(width: 8),
                               Row(
@@ -535,6 +753,106 @@ class _MediaItemCardState extends State<_MediaItemCard> {
               ),
               const SizedBox(height: 8),
               _QuickProgressControls(item: widget.item),
+              // Botões de ação rápida (Pausar, Dropar, Concluído)
+              Padding(
+                padding: const EdgeInsets.only(top: 8, bottom: 8),
+                child: Row(
+                  children: [
+                    // Botão Pausar/Despausar
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _isUpdating ? null : _togglePaused,
+                        icon: Icon(
+                          widget.item.status == MediaStatus.pausado 
+                              ? Icons.play_arrow 
+                              : Icons.pause,
+                          size: 18,
+                          color: widget.item.status == MediaStatus.pausado 
+                              ? Colors.orange 
+                              : Colors.grey[700],
+                        ),
+                        label: Text(
+                          widget.item.status == MediaStatus.pausado ? 'Pausado' : 'Pausar',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: widget.item.status == MediaStatus.pausado 
+                                ? Colors.orange 
+                                : Colors.grey[700],
+                          ),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                          side: BorderSide(
+                            color: widget.item.status == MediaStatus.pausado 
+                                ? Colors.orange 
+                                : Colors.grey[400]!,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    // Botão Dropar/Desdropar
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _isUpdating ? null : _toggleDropped,
+                        icon: Icon(
+                          widget.item.status == MediaStatus.dropado 
+                              ? Icons.undo 
+                              : Icons.cancel_outlined,
+                          size: 18,
+                          color: widget.item.status == MediaStatus.dropado 
+                              ? Colors.red 
+                              : Colors.grey[700],
+                        ),
+                        label: Text(
+                          widget.item.status == MediaStatus.dropado ? 'Dropado' : 'Dropar',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: widget.item.status == MediaStatus.dropado 
+                                ? Colors.red 
+                                : Colors.grey[700],
+                          ),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                          side: BorderSide(
+                            color: widget.item.status == MediaStatus.dropado 
+                                ? Colors.red 
+                                : Colors.grey[400]!,
+                          ),
+                        ),
+                      ),
+                    ),
+                    // Botão Concluído (só aparece quando chegou ao final)
+                    if (_shouldShowCompleteButton()) ...[
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _isUpdating ? null : _toggleCompleted,
+                          icon: Icon(
+                            widget.item.isCompleted ? Icons.check_circle : Icons.radio_button_unchecked,
+                            size: 18,
+                            color: widget.item.isCompleted ? Colors.green : Colors.grey[700],
+                          ),
+                          label: Text(
+                            widget.item.isCompleted ? 'Concluído' : 'Concluir',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: widget.item.isCompleted ? Colors.green : Colors.grey[700],
+                            ),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                            side: BorderSide(
+                              color: widget.item.isCompleted ? Colors.green : Colors.grey[400]!,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
               const SizedBox(height: 8),
               // Slider interativo para a barra de progresso
               SliderTheme(
@@ -638,6 +956,7 @@ class _QuickProgressControlsState extends State<_QuickProgressControls> {
         break;
     }
 
+    updatedItem.updateStatusAutomatically();
     await MediaService.updateItem(updatedItem);
     if (mounted) {
       setState(() => _isUpdating = false);
@@ -682,6 +1001,7 @@ class _QuickProgressControlsState extends State<_QuickProgressControls> {
         break;
     }
 
+    updatedItem.updateStatusAutomatically();
     await MediaService.updateItem(updatedItem);
     if (mounted) {
       setState(() => _isUpdating = false);
@@ -826,6 +1146,7 @@ class _WebtoonTotalControlsState extends State<_WebtoonTotalControls> {
       updatedItem.isCompleted = false;
     }
 
+    updatedItem.updateStatusAutomatically();
     await MediaService.updateItem(updatedItem);
     if (mounted) {
       setState(() => _isUpdating = false);
