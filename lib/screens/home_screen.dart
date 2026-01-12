@@ -612,6 +612,8 @@ class _MediaItemCardState extends State<_MediaItemCard> {
   Widget build(BuildContext context) {
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
+      elevation: 2,
+      shadowColor: Colors.black.withOpacity(0.1),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
         side: BorderSide(
@@ -760,32 +762,47 @@ class _MediaItemCardState extends State<_MediaItemCard> {
                   children: [
                     // Botão Pausar/Despausar
                     Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: _isUpdating ? null : _togglePaused,
-                        icon: Icon(
-                          widget.item.status == MediaStatus.pausado 
-                              ? Icons.play_arrow 
-                              : Icons.pause,
-                          size: 18,
-                          color: widget.item.status == MediaStatus.pausado 
-                              ? Colors.orange 
-                              : Colors.grey[700],
+                      child: Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(4),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.06),
+                              blurRadius: 3,
+                              offset: const Offset(0, 1.5),
+                            ),
+                          ],
                         ),
-                        label: Text(
-                          widget.item.status == MediaStatus.pausado ? 'Pausado' : 'Pausar',
-                          style: TextStyle(
-                            fontSize: 12,
+                        child: OutlinedButton.icon(
+                          onPressed: _isUpdating ? null : _togglePaused,
+                          icon: Icon(
+                            widget.item.status == MediaStatus.pausado 
+                                ? Icons.play_arrow 
+                                : Icons.pause,
+                            size: 18,
                             color: widget.item.status == MediaStatus.pausado 
                                 ? Colors.orange 
                                 : Colors.grey[700],
                           ),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                          side: BorderSide(
-                            color: widget.item.status == MediaStatus.pausado 
-                                ? Colors.orange 
-                                : Colors.grey[400]!,
+                          label: Text(
+                            widget.item.status == MediaStatus.pausado ? 'Pausado' : 'Pausar',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: widget.item.status == MediaStatus.pausado 
+                                  ? Colors.orange 
+                                  : Colors.grey[700],
+                            ),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            side: BorderSide(
+                              color: widget.item.status == MediaStatus.pausado 
+                                  ? Colors.orange 
+                                  : Colors.grey[400]!,
+                            ),
                           ),
                         ),
                       ),
@@ -793,32 +810,47 @@ class _MediaItemCardState extends State<_MediaItemCard> {
                     const SizedBox(width: 8),
                     // Botão Dropar/Desdropar
                     Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: _isUpdating ? null : _toggleDropped,
-                        icon: Icon(
-                          widget.item.status == MediaStatus.dropado 
-                              ? Icons.undo 
-                              : Icons.cancel_outlined,
-                          size: 18,
-                          color: widget.item.status == MediaStatus.dropado 
-                              ? Colors.red 
-                              : Colors.grey[700],
+                      child: Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(4),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.06),
+                              blurRadius: 3,
+                              offset: const Offset(0, 1.5),
+                            ),
+                          ],
                         ),
-                        label: Text(
-                          widget.item.status == MediaStatus.dropado ? 'Dropado' : 'Dropar',
-                          style: TextStyle(
-                            fontSize: 12,
+                        child: OutlinedButton.icon(
+                          onPressed: _isUpdating ? null : _toggleDropped,
+                          icon: Icon(
+                            widget.item.status == MediaStatus.dropado 
+                                ? Icons.undo 
+                                : Icons.cancel_outlined,
+                            size: 18,
                             color: widget.item.status == MediaStatus.dropado 
                                 ? Colors.red 
                                 : Colors.grey[700],
                           ),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                          side: BorderSide(
-                            color: widget.item.status == MediaStatus.dropado 
-                                ? Colors.red 
-                                : Colors.grey[400]!,
+                          label: Text(
+                            widget.item.status == MediaStatus.dropado ? 'Dropado' : 'Dropar',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: widget.item.status == MediaStatus.dropado 
+                                  ? Colors.red 
+                                  : Colors.grey[700],
+                            ),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            side: BorderSide(
+                              color: widget.item.status == MediaStatus.dropado 
+                                  ? Colors.red 
+                                  : Colors.grey[400]!,
+                            ),
                           ),
                         ),
                       ),
@@ -827,24 +859,38 @@ class _MediaItemCardState extends State<_MediaItemCard> {
                     if (_shouldShowCompleteButton()) ...[
                       const SizedBox(width: 8),
                       Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: _isUpdating ? null : _toggleCompleted,
-                          icon: Icon(
-                            widget.item.isCompleted ? Icons.check_circle : Icons.radio_button_unchecked,
-                            size: 18,
-                            color: widget.item.isCompleted ? Colors.green : Colors.grey[700],
+                        child: Container(
+                          decoration: BoxDecoration(
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.06),
+                                blurRadius: 3,
+                                offset: const Offset(0, 1.5),
+                              ),
+                            ],
                           ),
-                          label: Text(
-                            widget.item.isCompleted ? 'Concluído' : 'Concluir',
-                            style: TextStyle(
-                              fontSize: 12,
+                          child: OutlinedButton.icon(
+                            onPressed: _isUpdating ? null : _toggleCompleted,
+                            icon: Icon(
+                              widget.item.isCompleted ? Icons.check_circle : Icons.radio_button_unchecked,
+                              size: 18,
                               color: widget.item.isCompleted ? Colors.green : Colors.grey[700],
                             ),
-                          ),
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                            side: BorderSide(
-                              color: widget.item.isCompleted ? Colors.green : Colors.grey[400]!,
+                            label: Text(
+                              widget.item.isCompleted ? 'Concluído' : 'Concluir',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: widget.item.isCompleted ? Colors.green : Colors.grey[700],
+                              ),
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              side: BorderSide(
+                                color: widget.item.isCompleted ? Colors.green : Colors.grey[400]!,
+                              ),
                             ),
                           ),
                         ),
