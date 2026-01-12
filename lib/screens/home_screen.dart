@@ -180,28 +180,6 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                       textAlign: TextAlign.center,
                     ),
-                    const SizedBox(height: 40),
-                    FilledButton.icon(
-                      onPressed: () async {
-                        final result = await Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const AddEditMediaScreen(),
-                          ),
-                        );
-                        if (result == true && mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Item adicionado com sucesso!')),
-                          );
-                        }
-                      },
-                      icon: const Icon(Icons.add),
-                      label: const Text('Adicionar Primeiro Item'),
-                      style: FilledButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                        textStyle: const TextStyle(fontSize: 16),
-                      ),
-                    ),
                   ],
                 ),
               ),
@@ -252,22 +230,32 @@ class _HomeScreenState extends State<HomeScreen> {
           );
         },
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () async {
-          final result = await Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => const AddEditMediaScreen(),
-            ),
+      floatingActionButton: ValueListenableBuilder<Box<MediaItem>>(
+        valueListenable: MediaService.box.listenable(),
+        builder: (context, box, _) {
+          final allItems = _selectedFilter == null
+              ? MediaService.getAllItems()
+              : MediaService.getItemsByType(_selectedFilter);
+          final isEmpty = allItems.isEmpty;
+          
+          return FloatingActionButton.extended(
+            onPressed: () async {
+              final result = await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const AddEditMediaScreen(),
+                ),
+              );
+              if (result == true && mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Item adicionado com sucesso!')),
+                );
+              }
+            },
+            icon: const Icon(Icons.add),
+            label: Text(isEmpty ? 'Adicionar Item' : 'Adicionar'),
           );
-          if (result == true && mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Item adicionado com sucesso!')),
-            );
-          }
         },
-        icon: const Icon(Icons.add),
-        label: const Text('Adicionar'),
       ),
     );
   }
