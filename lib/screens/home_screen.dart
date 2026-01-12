@@ -14,6 +14,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   MediaType? _selectedFilter;
+  bool _showCompleted = false;
 
   Future<void> _addRapido() async {
     final tipos = MediaType.values;
@@ -85,6 +86,15 @@ class _HomeScreenState extends State<HomeScreen> {
         elevation: 0,
         actions: [
           IconButton(
+            icon: Icon(_showCompleted ? Icons.visibility_off : Icons.visibility),
+            onPressed: () {
+              setState(() {
+                _showCompleted = !_showCompleted;
+              });
+            },
+            tooltip: _showCompleted ? 'Ocultar completos' : 'Mostrar completos',
+          ),
+          IconButton(
             icon: const Icon(Icons.flash_on),
             onPressed: _addRapido,
             tooltip: 'Adicionar Rápido (Teste)',
@@ -121,44 +131,86 @@ class _HomeScreenState extends State<HomeScreen> {
       body: ValueListenableBuilder<Box<MediaItem>>(
         valueListenable: MediaService.box.listenable(),
         builder: (context, box, _) {
-          final items = _selectedFilter == null
+          final allItems = _selectedFilter == null
               ? MediaService.getAllItems()
               : MediaService.getItemsByType(_selectedFilter);
 
+          // Filtrar itens completos se não devem ser mostrados
+          var items = allItems;
+          if (!_showCompleted) {
+            items = items.where((item) => !item.isCompleted).toList();
+          }
+
           if (items.isEmpty) {
             return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.inbox_outlined,
-                    size: 64,
-                    color: Colors.grey[400],
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Nenhum item encontrado',
-                    style: TextStyle(
-                      fontSize: 18,
-                      color: Colors.grey[600],
+              child: Padding(
+                padding: const EdgeInsets.all(32.0),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(32),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        Icons.library_add_outlined,
+                        size: 80,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Toque no + para adicionar',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey[500],
+                    const SizedBox(height: 32),
+                    Text(
+                      'Sua biblioteca está vazia',
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: Theme.of(context).colorScheme.onSurface,
+                      ),
+                      textAlign: TextAlign.center,
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 12),
+                    Text(
+                      'Comece adicionando seus filmes, séries, livros e muito mais',
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                        height: 1.5,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 40),
+                    FilledButton.icon(
+                      onPressed: () async {
+                        final result = await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const AddEditMediaScreen(),
+                          ),
+                        );
+                        if (result == true && mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Item adicionado com sucesso!')),
+                          );
+                        }
+                      },
+                      icon: const Icon(Icons.add),
+                      label: const Text('Adicionar Primeiro Item'),
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                        textStyle: const TextStyle(fontSize: 16),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             );
           }
 
-          // Estatísticas
-          final totalItems = items.length;
-          final completedItems = items.where((item) => item.isCompleted).length;
+          // Estatísticas (baseadas em todos os itens, não apenas os visíveis)
+          final totalItems = allItems.length;
+          final completedItems = allItems.where((item) => item.isCompleted).length;
 
           return Column(
             children: [
@@ -234,29 +286,27 @@ class _StatCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          children: [
-            Icon(icon, size: 24),
-            const SizedBox(height: 4),
-            Text(
-              value,
-              style: const TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-              ),
+    return Padding(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        children: [
+          Icon(icon, size: 24),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
             ),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey[600],
-              ),
+          ),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.grey[600],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
