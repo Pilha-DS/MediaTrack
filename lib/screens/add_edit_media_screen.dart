@@ -5,8 +5,9 @@ import '../services/media_service.dart';
 
 class AddEditMediaScreen extends StatefulWidget {
   final MediaItem? item;
+  final String? initialUrl;
 
-  const AddEditMediaScreen({super.key, this.item});
+  const AddEditMediaScreen({super.key, this.item, this.initialUrl});
 
   @override
   State<AddEditMediaScreen> createState() => _AddEditMediaScreenState();
@@ -26,6 +27,7 @@ class _AddEditMediaScreenState extends State<AddEditMediaScreen> {
   late int _totalPages;
   late double _rating;
   late TextEditingController _notesController;
+  late TextEditingController _urlController;
   late bool _isCompleted;
   late MediaStatus _status;
 
@@ -48,8 +50,25 @@ class _AddEditMediaScreenState extends State<AddEditMediaScreen> {
       _totalPages = item.totalPages;
       _rating = item.rating;
       _notesController = TextEditingController(text: item.notes);
+      _urlController = TextEditingController(text: item.url ?? '');
       _isCompleted = item.isCompleted;
       _status = item.status;
+    } else if (widget.initialUrl != null && widget.initialUrl!.isNotEmpty) {
+      _titleController = TextEditingController();
+      _selectedType = MediaType.serie;
+      _currentSeason = 0;
+      _currentEpisode = 0;
+      _totalSeasons = 0;
+      _totalEpisodes = 0;
+      _currentChapter = 0;
+      _totalChapters = 0;
+      _currentPage = 0;
+      _totalPages = 0;
+      _rating = 0.0;
+      _notesController = TextEditingController();
+      _urlController = TextEditingController(text: widget.initialUrl);
+      _isCompleted = false;
+      _status = MediaStatus.naoIniciado;
     } else {
       _titleController = TextEditingController();
       _selectedType = MediaType.serie;
@@ -63,6 +82,7 @@ class _AddEditMediaScreenState extends State<AddEditMediaScreen> {
       _totalPages = 0;
       _rating = 0.0;
       _notesController = TextEditingController();
+      _urlController = TextEditingController();
       _isCompleted = false;
       _status = MediaStatus.naoIniciado;
     }
@@ -72,6 +92,7 @@ class _AddEditMediaScreenState extends State<AddEditMediaScreen> {
   void dispose() {
     _titleController.dispose();
     _notesController.dispose();
+    _urlController.dispose();
     super.dispose();
   }
 
@@ -100,8 +121,9 @@ class _AddEditMediaScreenState extends State<AddEditMediaScreen> {
     item.totalPages = _totalPages;
     item.rating = _rating;
     item.notes = _notesController.text;
+    item.url = _urlController.text.isEmpty ? null : _urlController.text;
     item.isCompleted = _isCompleted;
-    item.status = _status;
+    item.ensureStatusExclusivity(_status);
     item.updatedAt = DateTime.now();
 
     if (isEditing) {
@@ -277,6 +299,17 @@ class _AddEditMediaScreenState extends State<AddEditMediaScreen> {
                 prefixIcon: Icon(Icons.note),
               ),
               maxLines: 4,
+            ),
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: _urlController,
+              decoration: const InputDecoration(
+                labelText: 'URL/Link',
+                hintText: 'https://exemplo.com',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.link),
+              ),
+              keyboardType: TextInputType.url,
             ),
             const SizedBox(height: 24),
             SizedBox(

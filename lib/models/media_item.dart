@@ -100,6 +100,15 @@ class MediaItem extends HiveObject {
   @HiveField(18)
   MediaStatus? previousStatus;
 
+  @HiveField(19)
+  bool isFavorite;
+
+  @HiveField(20)
+  List<int> favoriteChapters;
+
+  @HiveField(21)
+  String? url;
+
   MediaItem({
     required this.id,
     required this.title,
@@ -120,6 +129,9 @@ class MediaItem extends HiveObject {
     this.status = MediaStatus.naoIniciado,
     this.wasCompleted = false,
     this.previousStatus,
+    this.isFavorite = false,
+    this.favoriteChapters = const [],
+    this.url,
   });
 
   double get progress {
@@ -225,11 +237,24 @@ class MediaItem extends HiveObject {
   }
 
   // Atualiza o status automaticamente baseado no progresso
-  // Não atualiza se estiver em "dropado" ou "pausado"
+  // Não atualiza se estiver em "dropado", "pausado" ou "concluído"
   void updateStatusAutomatically() {
     // Não atualiza se estiver em dropado ou pausado
     if (status == MediaStatus.dropado || status == MediaStatus.pausado) {
       return;
+    }
+
+    // Se isCompleted é true, o status DEVE ser concluído
+    if (isCompleted) {
+      if (status != MediaStatus.concluido) {
+        ensureStatusExclusivity(MediaStatus.concluido);
+      }
+      return;
+    }
+
+    // Se o status é concluído mas isCompleted é false, precisa atualizar
+    if (status == MediaStatus.concluido && !isCompleted) {
+      // Força atualização do status baseado no progresso
     }
 
     // Determina o valor atual baseado no tipo
@@ -257,18 +282,16 @@ class MediaItem extends HiveObject {
       case MediaType.jogo:
         // Para filmes e jogos, usa isCompleted diretamente
         if (isCompleted) {
-          status = MediaStatus.concluido;
-          wasCompleted = true;
+          ensureStatusExclusivity(MediaStatus.concluido);
         } else {
-          status = MediaStatus.naoIniciado;
+          ensureStatusExclusivity(MediaStatus.naoIniciado);
         }
         return;
     }
 
     // Se current = 0, então não iniciado
     if (current == 0) {
-      status = MediaStatus.naoIniciado;
-      isCompleted = false;
+      ensureStatusExclusivity(MediaStatus.naoIniciado);
       return;
     }
 
@@ -276,11 +299,11 @@ class MediaItem extends HiveObject {
     if (current >= total && total > 0) {
       // Se está marcado como completo, atualiza status e marca wasCompleted
       if (isCompleted) {
-        status = MediaStatus.concluido;
-        wasCompleted = true;
+        ensureStatusExclusivity(MediaStatus.concluido);
+      } else {
+        // Se não está completo mas chegou ao final, coloca em espera
+        ensureStatusExclusivity(MediaStatus.emEspera);
       }
-      // Se não está completo mas chegou ao final, mantém o status atual
-      // (o usuário pode usar o botão para marcar como concluído)
       return;
     }
 
@@ -288,16 +311,50 @@ class MediaItem extends HiveObject {
     if (wasCompleted) {
       // Se já foi concluído antes, então está reassistindo/relendo
       if (type == MediaType.livro || type == MediaType.webtoon) {
-        status = MediaStatus.lendo; // Relendo
+        ensureStatusExclusivity(MediaStatus.lendo); // Relendo
       } else {
-        status = MediaStatus.reassistindo;
+        ensureStatusExclusivity(MediaStatus.reassistindo);
       }
     } else {
       // Primeira vez assistindo/lendo
       if (type == MediaType.livro || type == MediaType.webtoon) {
-        status = MediaStatus.lendo;
+        ensureStatusExclusivity(MediaStatus.lendo);
       } else {
-        status = MediaStatus.assistindo;
+        ensureStatusExclusivity(MediaStatus.assistindo);
+      }
+    }
+  }
+
+  // Método auxiliar para garantir exclusividade mútua dos status
+  void ensureStatusExclusivity(MediaStatus newStatus) {
+    // Se isCompleted é true e o novo status não é concluído, força concluído
+    if (isCompleted && newStatus != MediaStatus.concluido) {
+      status = MediaStatus.concluido;
+      wasCompleted = true;
+      previousStatus = null;
+      return;
+    }
+    
+    status = newStatus;
+    
+    // Garantir que status mutuamente exclusivos sejam limpos
+    if (newStatus == MediaStatus.concluido) {
+      isCompleted = true;
+      wasCompleted = true;
+      previousStatus = null;
+    } else if (newStatus == MediaStatus.dropado || 
+               newStatus == MediaStatus.pausado ||
+               newStatus == MediaStatus.naoIniciado) {
+      isCompleted = false;
+      if (newStatus == MediaStatus.naoIniciado) {
+        previousStatus = null;
+      }
+    } else {
+      // Para outros status (lendo, assistindo, etc), se isCompleted é true, deve ser concluído
+      if (isCompleted) {
+        status = MediaStatus.concluido;
+        wasCompleted = true;
+        previousStatus = null;
       }
     }
   }
@@ -306,10 +363,11 @@ class MediaItem extends HiveObject {
   void toggleCompleted() {
     isCompleted = !isCompleted;
     if (isCompleted) {
-      status = MediaStatus.concluido;
-      wasCompleted = true;
+      // Quando marca como concluído, limpa outros status
+      ensureStatusExclusivity(MediaStatus.concluido);
     } else {
       // Se desmarcar como completo, atualiza o status automaticamente
+      // Isso vai definir como "emEspera" se estiver no final, ou outro status apropriado
       updateStatusAutomatically();
     }
   }
@@ -317,28 +375,27 @@ class MediaItem extends HiveObject {
   // Método para pausar (salva o status anterior)
   void pause() {
     if (status == MediaStatus.pausado) return; // Já está pausado
-    
-    // Salva o status anterior (exceto se for dropado ou concluído)
-    // Permite salvar mesmo se for naoIniciado, para poder restaurar depois
-    if (status != MediaStatus.dropado && 
-        status != MediaStatus.concluido) {
-      previousStatus = status;
-    } else {
-      // Se está dropado ou concluído, não pode pausar
+    if (status == MediaStatus.dropado || status == MediaStatus.concluido) {
+      // Não pode pausar se estiver dropado ou concluído
       return;
     }
-    status = MediaStatus.pausado;
+    
+    // Salva o status anterior
+    previousStatus = status;
+    ensureStatusExclusivity(MediaStatus.pausado);
   }
 
   // Método para dropar (salva o status anterior)
   void drop() {
     if (status == MediaStatus.dropado) return; // Já está dropado
-    
-    // Salva o status anterior apenas se não for um status especial
-    if (status != MediaStatus.concluido) {
-      previousStatus = status;
+    if (status == MediaStatus.concluido) {
+      // Não pode dropar se estiver concluído
+      return;
     }
-    status = MediaStatus.dropado;
+    
+    // Salva o status anterior
+    previousStatus = status;
+    ensureStatusExclusivity(MediaStatus.dropado);
   }
 
   // Método para despausar (restaura o status anterior)
@@ -350,7 +407,7 @@ class MediaItem extends HiveObject {
         previousStatus != MediaStatus.pausado && 
         previousStatus != MediaStatus.dropado &&
         previousStatus != MediaStatus.concluido) {
-      status = previousStatus!;
+      ensureStatusExclusivity(previousStatus!);
       previousStatus = null;
       return;
     }
@@ -377,13 +434,13 @@ class MediaItem extends HiveObject {
         break;
       case MediaType.filme:
       case MediaType.jogo:
-        status = isCompleted ? MediaStatus.concluido : MediaStatus.naoIniciado;
+        ensureStatusExclusivity(isCompleted ? MediaStatus.concluido : MediaStatus.naoIniciado);
         return;
     }
     
     // Se current = 0, então não iniciado
     if (current == 0) {
-      status = MediaStatus.naoIniciado;
+      ensureStatusExclusivity(MediaStatus.naoIniciado);
       return;
     }
     
@@ -391,16 +448,16 @@ class MediaItem extends HiveObject {
     if (wasCompleted) {
       // Se já foi concluído antes, então está reassistindo/relendo
       if (type == MediaType.livro || type == MediaType.webtoon) {
-        status = MediaStatus.lendo;
+        ensureStatusExclusivity(MediaStatus.lendo);
       } else {
-        status = MediaStatus.reassistindo;
+        ensureStatusExclusivity(MediaStatus.reassistindo);
       }
     } else {
       // Primeira vez assistindo/lendo
       if (type == MediaType.livro || type == MediaType.webtoon) {
-        status = MediaStatus.lendo;
+        ensureStatusExclusivity(MediaStatus.lendo);
       } else {
-        status = MediaStatus.assistindo;
+        ensureStatusExclusivity(MediaStatus.assistindo);
       }
     }
   }
@@ -413,7 +470,7 @@ class MediaItem extends HiveObject {
         previousStatus != MediaStatus.pausado && 
         previousStatus != MediaStatus.dropado &&
         previousStatus != MediaStatus.concluido) {
-      status = previousStatus!;
+      ensureStatusExclusivity(previousStatus!);
       previousStatus = null;
     } else {
       // Se não tem status anterior válido, usa o automático

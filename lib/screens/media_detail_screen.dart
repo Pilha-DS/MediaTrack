@@ -70,13 +70,18 @@ class _MediaDetailScreenState extends State<MediaDetailScreen> {
     );
 
     if (newStatus != null && newStatus != updatedItem.status) {
-      updatedItem.status = newStatus;
-      // Atualizar isCompleted baseado no status
-      if (newStatus == MediaStatus.concluido) {
-        updatedItem.isCompleted = true;
-      } else if (newStatus == MediaStatus.naoIniciado) {
-        updatedItem.isCompleted = false;
+      // Salva status anterior antes de mudar (se não for um status especial)
+      if (newStatus != MediaStatus.concluido && 
+          newStatus != MediaStatus.dropado &&
+          newStatus != MediaStatus.pausado &&
+          newStatus != MediaStatus.naoIniciado &&
+          updatedItem.status != MediaStatus.concluido &&
+          updatedItem.status != MediaStatus.dropado) {
+        updatedItem.previousStatus = updatedItem.status;
       }
+      
+      // Usa o método auxiliar para garantir exclusividade
+      updatedItem.ensureStatusExclusivity(newStatus);
       await MediaService.updateItem(updatedItem);
       _refreshItem();
     }

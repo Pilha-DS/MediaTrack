@@ -36,13 +36,16 @@ class MediaItemAdapter extends TypeAdapter<MediaItem> {
       status: fields[16] as MediaStatus,
       wasCompleted: fields[17] as bool,
       previousStatus: fields[18] as MediaStatus?,
+      isFavorite: fields[19] as bool? ?? false,
+      favoriteChapters: fields[20] != null ? (fields[20] as List).cast<int>() : <int>[],
+      url: fields[21] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, MediaItem obj) {
     writer
-      ..writeByte(19)
+      ..writeByte(22)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -80,7 +83,13 @@ class MediaItemAdapter extends TypeAdapter<MediaItem> {
       ..writeByte(17)
       ..write(obj.wasCompleted)
       ..writeByte(18)
-      ..write(obj.previousStatus);
+      ..write(obj.previousStatus)
+      ..writeByte(19)
+      ..write(obj.isFavorite)
+      ..writeByte(20)
+      ..write(obj.favoriteChapters)
+      ..writeByte(21)
+      ..write(obj.url);
   }
 
   @override
