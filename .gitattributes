@@ -1,0 +1,35 @@
+# Normalize line endings
+* text=auto
+
+# Source files - use LF
+*.dart text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+*.xml text eol=lf
+*.gradle text eol=lf
+*.properties text eol=lf
+*.kt text eol=lf
+*.java text eol=lf
+
+# Binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.jar binary
+*.class binary
+*.so binary
+*.dylib binary
+*.a binary
+*.o binary
+*.apk binary
+*.aar binary
+*.dex binary
+
+# Build files - ignore line endings
+build/** -text
+**/build/** -text
