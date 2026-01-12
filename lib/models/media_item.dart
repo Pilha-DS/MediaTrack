@@ -16,6 +16,8 @@ enum MediaType {
   podcast,
   @HiveField(5)
   anime,
+  @HiveField(6)
+  webtoon,
 }
 
 @HiveType(typeId: 1)
@@ -105,6 +107,9 @@ class MediaItem extends HiveObject {
       case MediaType.podcast:
         if (totalEpisodes == 0) return 0.0;
         return (currentEpisode / totalEpisodes).clamp(0.0, 1.0);
+      case MediaType.webtoon:
+        if (totalPages == 0) return 0.0;
+        return (currentPage / totalPages).clamp(0.0, 1.0);
     }
   }
 
@@ -121,6 +126,8 @@ class MediaItem extends HiveObject {
         return isCompleted ? 'Completo' : 'Em progresso';
       case MediaType.podcast:
         return 'Episódio $currentEpisode / $totalEpisodes';
+      case MediaType.webtoon:
+        return 'Página $currentPage / $totalPages';
     }
   }
 
@@ -138,6 +145,8 @@ class MediaItem extends HiveObject {
         return 'Podcast';
       case MediaType.anime:
         return 'Anime';
+      case MediaType.webtoon:
+        return 'Webtoon';
     }
   }
 }

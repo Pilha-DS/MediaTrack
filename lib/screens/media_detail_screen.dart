@@ -75,6 +75,8 @@ class _MediaDetailScreenState extends State<MediaDetailScreen> {
         return Colors.red;
       case MediaType.anime:
         return Colors.pink;
+      case MediaType.webtoon:
+        return Colors.indigo;
     }
   }
 
@@ -302,6 +304,8 @@ class _MediaDetailScreenState extends State<MediaDetailScreen> {
         return Icons.podcasts;
       case MediaType.anime:
         return Icons.animation;
+      case MediaType.webtoon:
+        return Icons.auto_stories;
     }
   }
 }

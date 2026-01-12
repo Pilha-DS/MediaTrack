@@ -321,6 +321,7 @@ class _AddEditMediaScreenState extends State<AddEditMediaScreen> {
           ],
         );
       case MediaType.livro:
+      case MediaType.webtoon:
         return Column(
           children: [
             Row(

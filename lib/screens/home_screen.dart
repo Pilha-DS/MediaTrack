@@ -26,6 +26,7 @@ class _HomeScreenState extends State<HomeScreen> {
       MediaType.jogo: ['The Witcher 3', 'Red Dead Redemption 2', 'God of War', 'Zelda'],
       MediaType.podcast: ['Podcast 1', 'Podcast 2', 'Podcast 3', 'Podcast 4'],
       MediaType.anime: ['Naruto', 'One Piece', 'Attack on Titan', 'Demon Slayer'],
+      MediaType.webtoon: ['Solo Leveling', 'Tower of God', 'The Beginning After The End', 'Omniscient Reader'],
     };
     
     final titulos = exemplos[tipoAleatorio] ?? ['Item de Teste'];
@@ -50,6 +51,7 @@ class _HomeScreenState extends State<HomeScreen> {
         item.currentEpisode = 1 + (now.millisecondsSinceEpoch % 5);
         break;
       case MediaType.livro:
+      case MediaType.webtoon:
         item.totalPages = 200 + (now.millisecondsSinceEpoch % 300);
         item.currentPage = 1 + (now.millisecondsSinceEpoch % 50);
         break;
@@ -350,6 +352,8 @@ class _MediaItemCard extends StatelessWidget {
                       ],
                     ),
                   ),
+                  if (item.type == MediaType.webtoon)
+                    _WebtoonTotalControls(item: item),
                   if (item.isCompleted)
                     Icon(
                       Icons.check_circle,
@@ -401,6 +405,8 @@ class _MediaItemCard extends StatelessWidget {
         return Colors.red;
       case MediaType.anime:
         return Colors.pink;
+      case MediaType.webtoon:
+        return Colors.indigo;
     }
   }
 
@@ -419,6 +425,8 @@ class _MediaItemCard extends StatelessWidget {
         return Colors.grey.shade400;
       case MediaType.anime:
         return Colors.pink.shade200;
+      case MediaType.webtoon:
+        return Colors.indigo.shade300;
     }
   }
 }
@@ -465,6 +473,7 @@ class _QuickProgressControlsState extends State<_QuickProgressControls> {
         }
         break;
       case MediaType.livro:
+      case MediaType.webtoon:
         if (updatedItem.totalPages > 0) {
           updatedItem.currentPage = (updatedItem.currentPage + amount).clamp(1, updatedItem.totalPages);
           if (updatedItem.currentPage >= updatedItem.totalPages) {
@@ -518,6 +527,7 @@ class _QuickProgressControlsState extends State<_QuickProgressControls> {
         }
         break;
       case MediaType.livro:
+      case MediaType.webtoon:
         updatedItem.currentPage = (updatedItem.currentPage - amount).clamp(1, updatedItem.totalPages);
         break;
       case MediaType.podcast:
@@ -640,6 +650,107 @@ class _QuickProgressControlsState extends State<_QuickProgressControls> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _WebtoonTotalControls extends StatefulWidget {
+  final MediaItem item;
+
+  const _WebtoonTotalControls({required this.item});
+
+  @override
+  State<_WebtoonTotalControls> createState() => _WebtoonTotalControlsState();
+}
+
+class _WebtoonTotalControlsState extends State<_WebtoonTotalControls> {
+  bool _isUpdating = false;
+
+  Future<void> _adjustTotalPages(int delta) async {
+    if (_isUpdating) return;
+    setState(() => _isUpdating = true);
+    final updatedItem = MediaService.getItem(widget.item.id);
+    if (updatedItem == null) return;
+
+    updatedItem.totalPages = (updatedItem.totalPages + delta).clamp(1, 9999);
+    // Ajusta currentPage se necessário
+    if (updatedItem.currentPage > updatedItem.totalPages) {
+      updatedItem.currentPage = updatedItem.totalPages;
+    }
+    if (updatedItem.currentPage >= updatedItem.totalPages) {
+      updatedItem.isCompleted = true;
+    } else {
+      updatedItem.isCompleted = false;
+    }
+
+    await MediaService.updateItem(updatedItem);
+    if (mounted) {
+      setState(() => _isUpdating = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isUpdating) {
+      return const SizedBox(
+        width: 16,
+        height: 16,
+        child: CircularProgressIndicator(strokeWidth: 2),
+      );
+    }
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () => _adjustTotalPages(-1),
+            borderRadius: BorderRadius.circular(4),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.blue[100],
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(color: Colors.blue[300]!, width: 1),
+              ),
+              child: Text(
+                'Total -1',
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.blue[700],
+                ),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 4),
+        Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () => _adjustTotalPages(1),
+            borderRadius: BorderRadius.circular(4),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.blue[100],
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(color: Colors.blue[300]!, width: 1),
+              ),
+              child: Text(
+                'Total +1',
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.blue[700],
+                ),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+      ],
     );
   }
 }
