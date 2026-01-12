@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/quick_url.dart';
+import '../models/app_settings.dart';
 import 'webview_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -13,11 +14,13 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   late Box<QuickUrl> _quickUrlsBox;
+  late Box<AppSettings> _settingsBox;
 
   @override
   void initState() {
     super.initState();
     _quickUrlsBox = Hive.box<QuickUrl>('quickUrls');
+    _settingsBox = Hive.box<AppSettings>('appSettings');
   }
 
   Future<void> _addQuickUrl() async {
@@ -242,11 +245,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
         title: const Text('Configurações'),
       ),
       body: DefaultTabController(
-        length: 1,
+        length: 2,
         child: Column(
           children: [
             const TabBar(
               tabs: [
+                Tab(
+                  icon: Icon(Icons.settings),
+                  text: 'Geral',
+                ),
                 Tab(
                   icon: Icon(Icons.star_border),
                   text: 'URLs Rápidas',
@@ -256,6 +263,139 @@ class _SettingsScreenState extends State<SettingsScreen> {
             Expanded(
               child: TabBarView(
                 children: [
+                  // Aba de Configurações Gerais
+                  ValueListenableBuilder<Box<AppSettings>>(
+                    valueListenable: _settingsBox.listenable(),
+                    builder: (context, box, _) {
+                      final settings = box.get('settings') ?? AppSettings();
+                      
+                      return ListView(
+                        padding: const EdgeInsets.all(16),
+                        children: [
+                          // Seção de Aparência
+                          Card(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Padding(
+                                  padding: const EdgeInsets.all(16),
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        Icons.palette,
+                                        color: Theme.of(context).colorScheme.primary,
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Text(
+                                        'Aparência',
+                                        style: TextStyle(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.bold,
+                                          color: Theme.of(context).colorScheme.onSurface,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const Divider(height: 1),
+                                // Modo de Tema
+                                ListTile(
+                                  leading: const Icon(Icons.brightness_6),
+                                  title: const Text('Modo de Tema'),
+                                  subtitle: Text(
+                                    settings.themeMode == 'system'
+                                        ? 'Seguir sistema'
+                                        : settings.themeMode == 'light'
+                                            ? 'Claro'
+                                            : 'Escuro',
+                                  ),
+                                  trailing: DropdownButton<String>(
+                                    value: settings.themeMode,
+                                    items: const [
+                                      DropdownMenuItem(
+                                        value: 'system',
+                                        child: Text('Seguir sistema'),
+                                      ),
+                                      DropdownMenuItem(
+                                        value: 'light',
+                                        child: Text('Claro'),
+                                      ),
+                                      DropdownMenuItem(
+                                        value: 'dark',
+                                        child: Text('Escuro'),
+                                      ),
+                                    ],
+                                    onChanged: (value) {
+                                      if (value != null) {
+                                        settings.themeMode = value;
+                                        settings.save();
+                                        // Recarregar o app para aplicar o tema
+                                        Navigator.of(context).pop();
+                                      }
+                                    },
+                                  ),
+                                ),
+                                // Material 3
+                                SwitchListTile(
+                                  secondary: const Icon(Icons.auto_awesome),
+                                  title: const Text('Material Design 3'),
+                                  subtitle: const Text('Usar design Material 3'),
+                                  value: settings.useMaterial3,
+                                  onChanged: (value) {
+                                    settings.useMaterial3 = value;
+                                    settings.save();
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          // Seção de Informações
+                          Card(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Padding(
+                                  padding: const EdgeInsets.all(16),
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        Icons.info_outline,
+                                        color: Theme.of(context).colorScheme.primary,
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Text(
+                                        'Informações',
+                                        style: TextStyle(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.bold,
+                                          color: Theme.of(context).colorScheme.onSurface,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const Divider(height: 1),
+                                ListTile(
+                                  leading: const Icon(Icons.apps),
+                                  title: const Text('Versão do App'),
+                                  subtitle: const Text('1.0.0'),
+                                ),
+                                ListTile(
+                                  leading: const Icon(Icons.storage),
+                                  title: const Text('Armazenamento'),
+                                  subtitle: Text(
+                                    '${_quickUrlsBox.length} URLs rápidas',
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                  // Aba de URLs Rápidas
                   ValueListenableBuilder<Box<QuickUrl>>(
                     valueListenable: _quickUrlsBox.listenable(),
                     builder: (context, box, _) {

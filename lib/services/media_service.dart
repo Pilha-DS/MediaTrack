@@ -7,12 +7,12 @@ class MediaService {
   static Box<MediaItem> get box => _box;
 
   static List<MediaItem> getAllItems() {
-    return _box.values.toList();
+    return _box.values.toList(growable: false);
   }
 
   static List<MediaItem> getItemsByType(MediaType? type) {
     if (type == null) return getAllItems();
-    return _box.values.where((item) => item.type == type).toList();
+    return _box.values.where((item) => item.type == type).toList(growable: false);
   }
 
   static MediaItem? getItem(String id) {
@@ -37,6 +37,10 @@ class MediaService {
   }
 
   static int getCompletedCount() {
-    return _box.values.where((item) => item.isCompleted).length;
+    int count = 0;
+    for (final item in _box.values) {
+      if (item.isCompleted) count++;
+    }
+    return count;
   }
 }

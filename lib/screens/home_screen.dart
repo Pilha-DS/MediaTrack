@@ -42,6 +42,108 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  // Método otimizado para ordenação de itens
+  List<MediaItem> _sortItems(List<MediaItem> allItems) {
+    final items = List<MediaItem>.from(allItems);
+    
+    if (_showNotStarted) {
+      items.sort(_compareNotStarted);
+    } else if (_showCompleted && !_showDropped) {
+      items.sort(_compareCompleted);
+    } else if (!_showCompleted && _showDropped) {
+      items.sort(_compareDropped);
+    } else {
+      items.sort(_compareDefault);
+    }
+    
+    return items;
+  }
+
+  // Comparadores otimizados
+  int _compareNotStarted(MediaItem a, MediaItem b) {
+    if (a.isFavorite != b.isFavorite) {
+      return a.isFavorite ? -1 : 1;
+    }
+    final aIsNotStarted = a.status == MediaStatus.naoIniciado;
+    final bIsNotStarted = b.status == MediaStatus.naoIniciado;
+    if (aIsNotStarted != bIsNotStarted) {
+      return aIsNotStarted ? -1 : 1;
+    }
+    return 0;
+  }
+
+  int _compareCompleted(MediaItem a, MediaItem b) {
+    if (a.isFavorite != b.isFavorite) {
+      return a.isFavorite ? -1 : 1;
+    }
+    final aIsCompleted = a.isCompleted || a.status == MediaStatus.concluido;
+    final bIsCompleted = b.isCompleted || b.status == MediaStatus.concluido;
+    if (aIsCompleted != bIsCompleted) {
+      return aIsCompleted ? -1 : 1;
+    }
+    return 0;
+  }
+
+  int _compareDropped(MediaItem a, MediaItem b) {
+    if (a.isFavorite != b.isFavorite) {
+      return a.isFavorite ? -1 : 1;
+    }
+    final aIsDropped = a.status == MediaStatus.dropado;
+    final bIsDropped = b.status == MediaStatus.dropado;
+    if (aIsDropped != bIsDropped) {
+      return aIsDropped ? -1 : 1;
+    }
+    return 0;
+  }
+
+  int _compareDefault(MediaItem a, MediaItem b) {
+    if (a.isFavorite != b.isFavorite) {
+      return a.isFavorite ? -1 : 1;
+    }
+    
+    final aPriority = _getItemPriority(a);
+    final bPriority = _getItemPriority(b);
+    
+    return aPriority.compareTo(bPriority);
+  }
+
+  int _getItemPriority(MediaItem item) {
+    // Cachear verificações de tipo
+    final isBookOrWebtoon = item.type == MediaType.livro || item.type == MediaType.webtoon;
+    final isVideoContent = item.type == MediaType.serie || 
+        item.type == MediaType.anime || 
+        item.type == MediaType.filme || 
+        item.type == MediaType.podcast;
+    
+    final isRelendo = isBookOrWebtoon &&
+        item.status == MediaStatus.lendo &&
+        item.wasCompleted;
+    
+    final isReassistindo = isVideoContent &&
+        item.status == MediaStatus.assistindo &&
+        item.wasCompleted;
+    
+    final isLendoAssistindoNormal = (item.status == MediaStatus.lendo || 
+        item.status == MediaStatus.assistindo) &&
+        !item.wasCompleted;
+    
+    if (isLendoAssistindoNormal) {
+      return 1;
+    } else if (item.status == MediaStatus.emEspera) {
+      return 2;
+    } else if (isRelendo || item.status == MediaStatus.reassistindo || isReassistindo) {
+      return 3;
+    } else if (item.status == MediaStatus.naoIniciado) {
+      return 4;
+    } else if (item.status == MediaStatus.dropado || item.status == MediaStatus.pausado) {
+      return 5;
+    } else if (item.status == MediaStatus.concluido || item.isCompleted) {
+      return 6;
+    } else {
+      return 7;
+    }
+  }
+
   void _showQuickUrlsMenu(BuildContext context, List<QuickUrl> quickUrls) {
     showModalBottomSheet(
       context: context,
@@ -568,25 +670,31 @@ class _HomeScreenState extends State<HomeScreen> {
                 });
                 _scrollToTop();
               },
-              itemBuilder: (context) => [
-                const PopupMenuItem(
-                  value: null,
-                  child: Text('Todos'),
-                ),
-                ...MediaType.values.map((type) {
-                  final item = MediaItem(
-                    id: '',
-                    title: '',
-                    type: type,
-                    createdAt: DateTime.now(),
-                    updatedAt: DateTime.now(),
-                  );
-                  return PopupMenuItem(
-                    value: type,
-                    child: Text(item.typeName),
-                  );
-                }),
-              ],
+              itemBuilder: (context) {
+                // Cachear os nomes dos tipos para evitar criar MediaItem desnecessariamente
+                final typeNames = {
+                  MediaType.serie: 'Série',
+                  MediaType.filme: 'Filme',
+                  MediaType.livro: 'Livro',
+                  MediaType.jogo: 'Jogo',
+                  MediaType.podcast: 'Podcast',
+                  MediaType.anime: 'Anime',
+                  MediaType.webtoon: 'Webtoon',
+                };
+                
+                return [
+                  const PopupMenuItem(
+                    value: null,
+                    child: Text('Todos'),
+                  ),
+                  ...MediaType.values.map((type) {
+                    return PopupMenuItem(
+                      value: type,
+                      child: Text(typeNames[type] ?? type.toString()),
+                    );
+                  }),
+                ];
+              },
             ),
           ],
           IconButton(
@@ -626,105 +734,17 @@ class _HomeScreenState extends State<HomeScreen> {
               ? MediaService.getAllItems()
               : MediaService.getItemsByType(_selectedFilter);
 
-          // Filtrar por nome (case-insensitive)
-          if (_searchController.text.isNotEmpty) {
-            final searchQuery = _searchController.text.toLowerCase();
+          // Filtrar por nome (case-insensitive) - otimizado
+          final searchText = _searchController.text;
+          if (searchText.isNotEmpty) {
+            final searchQuery = searchText.toLowerCase();
             allItems = allItems.where((item) {
               return item.title.toLowerCase().contains(searchQuery);
             }).toList();
           }
 
           // Ordenar itens baseado no estado de visualização (colocar os solicitados primeiro)
-          var items = List<MediaItem>.from(allItems);
-          
-          if (_showNotStarted) {
-            // Reorganizar: não iniciados primeiro, mas favoritos ainda primeiro
-            items.sort((a, b) {
-              // Favoritos sempre primeiro
-              if (a.isFavorite && !b.isFavorite) return -1;
-              if (!a.isFavorite && b.isFavorite) return 1;
-              // Depois não iniciados
-              final aIsNotStarted = a.status == MediaStatus.naoIniciado;
-              final bIsNotStarted = b.status == MediaStatus.naoIniciado;
-              if (aIsNotStarted && !bIsNotStarted) return -1;
-              if (!aIsNotStarted && bIsNotStarted) return 1;
-              return 0;
-            });
-          } else if (_showCompleted && !_showDropped) {
-            // Reorganizar: concluídos primeiro, mas favoritos ainda primeiro
-            items.sort((a, b) {
-              // Favoritos sempre primeiro
-              if (a.isFavorite && !b.isFavorite) return -1;
-              if (!a.isFavorite && b.isFavorite) return 1;
-              // Depois concluídos
-              final aIsCompleted = a.isCompleted || a.status == MediaStatus.concluido;
-              final bIsCompleted = b.isCompleted || b.status == MediaStatus.concluido;
-              if (aIsCompleted && !bIsCompleted) return -1;
-              if (!aIsCompleted && bIsCompleted) return 1;
-              return 0;
-            });
-          } else if (!_showCompleted && _showDropped) {
-            // Reorganizar: dropados primeiro, mas favoritos ainda primeiro
-            items.sort((a, b) {
-              // Favoritos sempre primeiro
-              if (a.isFavorite && !b.isFavorite) return -1;
-              if (!a.isFavorite && b.isFavorite) return 1;
-              // Depois dropados
-              final aIsDropped = a.status == MediaStatus.dropado;
-              final bIsDropped = b.status == MediaStatus.dropado;
-              if (aIsDropped && !bIsDropped) return -1;
-              if (!aIsDropped && bIsDropped) return 1;
-              return 0;
-            });
-          } else if (!_showCompleted && !_showDropped && !_showNotStarted) {
-            // Ordenação padrão: Favoritos primeiro, depois Lendo/Assistindo, Em espera, Relendo/Reassistindo, Não iniciado, Dropado/Pausado, Concluído
-            items.sort((a, b) {
-              // Favoritos sempre primeiro
-              if (a.isFavorite && !b.isFavorite) return -1;
-              if (!a.isFavorite && b.isFavorite) return 1;
-              
-              int getPriority(MediaItem item) {
-                // Verificar se é relendo (livro/webtoon com status lendo mas wasCompleted)
-                final isRelendo = (item.type == MediaType.livro || item.type == MediaType.webtoon) &&
-                    item.status == MediaStatus.lendo &&
-                    item.wasCompleted;
-                
-                // Verificar se é reassistindo (série/anime/filme/podcast com status assistindo mas wasCompleted)
-                final isReassistindo = (item.type == MediaType.serie || 
-                    item.type == MediaType.anime || 
-                    item.type == MediaType.filme || 
-                    item.type == MediaType.podcast) &&
-                    item.status == MediaStatus.assistindo &&
-                    item.wasCompleted;
-                
-                // Verificar se é lendo/assistindo normal (primeira vez)
-                final isLendoAssistindoNormal = (item.status == MediaStatus.lendo || 
-                    item.status == MediaStatus.assistindo) &&
-                    !item.wasCompleted;
-                
-                if (isLendoAssistindoNormal) {
-                  return 1; // Lendo/Assistindo - Primeiro
-                } else if (item.status == MediaStatus.emEspera) {
-                  return 2; // Em espera
-                } else if (isRelendo || item.status == MediaStatus.reassistindo || isReassistindo) {
-                  return 3; // Relendo/Reassistindo
-                } else if (item.status == MediaStatus.naoIniciado) {
-                  return 4; // Não iniciado
-                } else if (item.status == MediaStatus.dropado || item.status == MediaStatus.pausado) {
-                  return 5; // Dropado/Pausado
-                } else if (item.status == MediaStatus.concluido || item.isCompleted) {
-                  return 6; // Concluído - Último
-                } else {
-                  return 7; // Outros status
-                }
-              }
-              
-              final aPriority = getPriority(a);
-              final bPriority = getPriority(b);
-              
-              return aPriority.compareTo(bPriority);
-            });
-          }
+          final items = _sortItems(allItems);
 
           if (items.isEmpty) {
             return Center(
@@ -771,9 +791,12 @@ class _HomeScreenState extends State<HomeScreen> {
             );
           }
 
-          // Estatísticas (baseadas em todos os itens, não apenas os visíveis)
+          // Estatísticas (baseadas em todos os itens, não apenas os visíveis) - otimizado
           final totalItems = allItems.length;
-          final completedItems = allItems.where((item) => item.isCompleted).length;
+          int completedItems = 0;
+          for (final item in allItems) {
+            if (item.isCompleted) completedItems++;
+          }
 
           return Column(
             children: [
@@ -806,9 +829,13 @@ class _HomeScreenState extends State<HomeScreen> {
                   controller: _scrollController,
                   padding: const EdgeInsets.all(16),
                   itemCount: items.length,
+                  key: const ValueKey('media_items_list'),
                   itemBuilder: (context, index) {
                     final item = items[index];
-                    return _MediaItemCard(item: item);
+                    return _MediaItemCard(
+                      key: ValueKey('media_item_${item.id}'),
+                      item: item,
+                    );
                   },
                 ),
               ),
@@ -891,8 +918,13 @@ class _StatCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final cardColor = _getColor(context);
-    final backgroundColor = isDark ? Colors.grey[850]! : Colors.grey[100]!;
-    final borderColor = isDark ? Colors.grey[700]! : Colors.grey[300]!;
+    // Cores mais suaves para ambos os modos (um pouco mais escuro no claro)
+    final backgroundColor = isDark 
+        ? const Color(0xFF1A1A2A) 
+        : const Color(0xFFE8E8E8); // Cinza claro (um pouco mais escuro)
+    final borderColor = isDark 
+        ? Colors.white.withOpacity(0.05) 
+        : Colors.grey.withOpacity(0.25); // Borda um pouco mais visível no modo claro
     
     return Expanded(
       child: Container(
@@ -910,9 +942,9 @@ class _StatCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: borderColor,
-            width: 1.5,
+            width: isDark ? 1.0 : 1.0,
           ),
-          boxShadow: [
+          boxShadow: isDark ? [] : [
             BoxShadow(
               color: Colors.black.withOpacity(0.05),
               blurRadius: 8,
@@ -977,7 +1009,7 @@ class _StatCard extends StatelessWidget {
 class _MediaItemCard extends StatefulWidget {
   final MediaItem item;
 
-  const _MediaItemCard({required this.item});
+  const _MediaItemCard({super.key, required this.item});
 
   @override
   State<_MediaItemCard> createState() => _MediaItemCardState();
@@ -996,22 +1028,42 @@ class _MediaItemCardState extends State<_MediaItemCard> {
     }
   }
 
-  Color _getTypeColor(MediaType type) {
-    switch (type) {
-      case MediaType.serie:
-        return Colors.blue;
-      case MediaType.filme:
-        return Colors.purple;
-      case MediaType.livro:
-        return Colors.orange;
-      case MediaType.jogo:
-        return Colors.green;
-      case MediaType.podcast:
-        return Colors.red;
-      case MediaType.anime:
-        return Colors.pink;
-      case MediaType.webtoon:
-        return Colors.indigo;
+  Color _getTypeColor(MediaType type, {bool isDark = false}) {
+    // Cores mais suaves para o modo escuro
+    if (isDark) {
+      switch (type) {
+        case MediaType.serie:
+          return const Color(0xFF6B9BD6); // Azul suave e desaturado
+        case MediaType.filme:
+          return const Color(0xFF9B7FD9); // Roxo suave
+        case MediaType.livro:
+          return const Color(0xFFD4A574); // Laranja suave
+        case MediaType.jogo:
+          return const Color(0xFF7BC4A4); // Verde suave
+        case MediaType.podcast:
+          return const Color(0xFFD67B7B); // Vermelho suave
+        case MediaType.anime:
+          return const Color(0xFFD67BA8); // Rosa suave
+        case MediaType.webtoon:
+          return const Color(0xFF8B7BD6); // Índigo suave
+      }
+    } else {
+      switch (type) {
+        case MediaType.serie:
+          return Colors.blue;
+        case MediaType.filme:
+          return Colors.purple;
+        case MediaType.livro:
+          return Colors.orange;
+        case MediaType.jogo:
+          return Colors.green;
+        case MediaType.podcast:
+          return Colors.red;
+        case MediaType.anime:
+          return Colors.pink;
+        case MediaType.webtoon:
+          return Colors.indigo;
+      }
     }
   }
 
@@ -1032,6 +1084,48 @@ class _MediaItemCardState extends State<_MediaItemCard> {
         return Colors.pink.shade200;
       case MediaType.webtoon:
         return Colors.indigo.shade300;
+    }
+  }
+
+  Color _getStatusColor(MediaStatus status, {bool isDark = false}) {
+    // Cores mais intensas para os status, especialmente no modo escuro
+    if (isDark) {
+      switch (status) {
+        case MediaStatus.naoIniciado:
+          return Colors.grey[400]!;
+        case MediaStatus.assistindo:
+        case MediaStatus.lendo:
+          return const Color(0xFF5BA3E8); // Azul mais intenso
+        case MediaStatus.pausado:
+          return const Color(0xFFFF9800); // Laranja mais intenso
+        case MediaStatus.concluido:
+          return const Color(0xFF4CAF50); // Verde mais intenso
+        case MediaStatus.reassistindo:
+          return const Color(0xFF9C27B0); // Roxo mais intenso
+        case MediaStatus.emEspera:
+          return const Color(0xFFFFC107); // Amarelo mais intenso
+        case MediaStatus.dropado:
+          return const Color(0xFFF44336); // Vermelho mais intenso
+      }
+    } else {
+      // No modo claro, usar cores mais vibrantes também
+      switch (status) {
+        case MediaStatus.naoIniciado:
+          return Colors.grey[700]!;
+        case MediaStatus.assistindo:
+        case MediaStatus.lendo:
+          return Colors.blue[700]!;
+        case MediaStatus.pausado:
+          return Colors.orange[700]!;
+        case MediaStatus.concluido:
+          return Colors.green[700]!;
+        case MediaStatus.reassistindo:
+          return Colors.purple[700]!;
+        case MediaStatus.emEspera:
+          return Colors.amber[700]!;
+        case MediaStatus.dropado:
+          return Colors.red[700]!;
+      }
     }
   }
 
@@ -1399,19 +1493,19 @@ class _MediaItemCardState extends State<_MediaItemCard> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
-      elevation: widget.item.isFavorite ? 4 : 2,
-      shadowColor: widget.item.isFavorite 
-          ? Colors.amber.withOpacity(0.3)
-          : Colors.black.withOpacity(0.1),
+      elevation: 0, // Sem elevação no modo escuro
+      shadowColor: Colors.transparent,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
         side: BorderSide(
           color: widget.item.isFavorite 
-              ? Colors.amber
-              : _getBorderColor(widget.item.type),
-          width: widget.item.isFavorite ? 2.0 : 1.5,
+              ? (isDark ? Colors.amber.withOpacity(0.6) : Colors.amber.withOpacity(0.8))
+              : (isDark ? Colors.white.withOpacity(0.15) : Colors.grey.withOpacity(0.4)),
+          width: widget.item.isFavorite ? (isDark ? 1.5 : 2.0) : (isDark ? 1.0 : 1.0),
         ),
       ),
       child: Padding(
@@ -1456,14 +1550,18 @@ class _MediaItemCardState extends State<_MediaItemCard> {
                               vertical: 4,
                             ),
                             decoration: BoxDecoration(
-                              color: _getTypeColor(widget.item.type).withOpacity(0.2),
+                              color: isDark 
+                                  ? _getTypeColor(widget.item.type, isDark: isDark).withOpacity(0.12)
+                                  : _getTypeColor(widget.item.type, isDark: false).withOpacity(0.2),
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Text(
                               widget.item.typeName,
                               style: TextStyle(
                                 fontSize: 12,
-                                color: _getTypeColor(widget.item.type),
+                                color: isDark
+                                    ? _getTypeColor(widget.item.type, isDark: isDark).withOpacity(0.95)
+                                    : _getTypeColor(widget.item.type, isDark: false).withOpacity(0.9),
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
@@ -1476,11 +1574,15 @@ class _MediaItemCardState extends State<_MediaItemCard> {
                                 vertical: 4,
                               ),
                               decoration: BoxDecoration(
-                                color: widget.item.statusColor.withOpacity(0.2),
+                                color: isDark
+                                    ? widget.item.statusColor.withOpacity(0.12)
+                                    : widget.item.statusColor.withOpacity(0.2),
                                 borderRadius: BorderRadius.circular(8),
                                 border: Border.all(
-                                  color: widget.item.statusColor.withOpacity(0.5),
-                                  width: 1,
+                                  color: isDark
+                                      ? widget.item.statusColor.withOpacity(0.3)
+                                      : widget.item.statusColor.withOpacity(0.5),
+                                  width: isDark ? 0.5 : 1,
                                 ),
                               ),
                               child: Row(
@@ -1490,7 +1592,7 @@ class _MediaItemCardState extends State<_MediaItemCard> {
                                     width: 8,
                                     height: 8,
                                     decoration: BoxDecoration(
-                                      color: widget.item.statusColor,
+                                      color: _getStatusColor(widget.item.status, isDark: isDark),
                                       shape: BoxShape.circle,
                                     ),
                                   ),
@@ -1499,8 +1601,8 @@ class _MediaItemCardState extends State<_MediaItemCard> {
                                     widget.item.statusName,
                                     style: TextStyle(
                                       fontSize: 12,
-                                      color: widget.item.statusColor,
-                                      fontWeight: FontWeight.w600,
+                                      color: _getStatusColor(widget.item.status, isDark: isDark), // Cor mais intensa
+                                      fontWeight: FontWeight.w700, // Negrito mais forte
                                     ),
                                   ),
                                 ],
@@ -1517,13 +1619,13 @@ class _MediaItemCardState extends State<_MediaItemCard> {
                                   color: Colors.amber[600],
                                 ),
                                 const SizedBox(width: 4),
-                                Text(
-                                  widget.item.rating.toStringAsFixed(1),
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.grey[700],
+                                  Text(
+                                    widget.item.rating.toStringAsFixed(1),
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: isDark ? Colors.grey[400] : Colors.grey[700],
+                                    ),
                                   ),
-                                ),
                               ],
                             ),
                         ],
@@ -1545,7 +1647,9 @@ class _MediaItemCardState extends State<_MediaItemCard> {
                         IconButton(
                           icon: Icon(
                             widget.item.isFavorite ? Icons.star : Icons.star_border,
-                            color: widget.item.isFavorite ? Colors.amber[600] : Colors.grey[700],
+                            color: widget.item.isFavorite 
+                                ? Colors.amber[600] 
+                                : (isDark ? Colors.grey[500] : Colors.grey[700]),
                           ),
                           iconSize: 20,
                           padding: EdgeInsets.zero,
@@ -1564,7 +1668,7 @@ class _MediaItemCardState extends State<_MediaItemCard> {
                           IconButton(
                             icon: const Icon(Icons.open_in_browser),
                             iconSize: 24,
-                            color: Colors.blue[700],
+                            color: isDark ? Colors.blue[400] : Colors.blue[700],
                             padding: const EdgeInsets.all(4),
                             constraints: const BoxConstraints(
                               minWidth: 32,
@@ -1576,9 +1680,9 @@ class _MediaItemCardState extends State<_MediaItemCard> {
                         ],
                         const SizedBox(width: 4),
                         IconButton(
-                          icon: const Icon(Icons.settings),
-                          iconSize: 20,
-                          color: Colors.grey[700],
+                            icon: const Icon(Icons.settings),
+                            iconSize: 20,
+                            color: isDark ? Colors.grey[400] : Colors.grey[700],
                           padding: EdgeInsets.zero,
                           constraints: const BoxConstraints(),
                           onPressed: () {
@@ -1602,7 +1706,7 @@ class _MediaItemCardState extends State<_MediaItemCard> {
                 widget.item.progressText,
                 style: TextStyle(
                   fontSize: 14,
-                  color: Colors.grey[700],
+                  color: isDark ? Colors.grey[400] : Colors.grey[600],
                 ),
               ),
               const SizedBox(height: 8),
@@ -1755,10 +1859,10 @@ class _MediaItemCardState extends State<_MediaItemCard> {
               // Slider interativo para a barra de progresso
               SliderTheme(
                 data: SliderTheme.of(context).copyWith(
-                  activeTrackColor: _getTypeColor(widget.item.type),
-                  inactiveTrackColor: Colors.grey[200],
-                  thumbColor: _getTypeColor(widget.item.type),
-                  overlayColor: _getTypeColor(widget.item.type).withOpacity(0.2),
+                  activeTrackColor: _getTypeColor(widget.item.type, isDark: isDark),
+                  inactiveTrackColor: isDark ? Colors.grey[700] : Colors.grey[200],
+                  thumbColor: _getTypeColor(widget.item.type, isDark: isDark),
+                  overlayColor: _getTypeColor(widget.item.type, isDark: isDark).withOpacity(isDark ? 0.15 : 0.2),
                   thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
                   trackHeight: 6,
                 ),
@@ -1905,6 +2009,8 @@ class _QuickProgressControlsState extends State<_QuickProgressControls> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
     // Não mostrar controles para filmes/jogos completos ou itens sem progresso
     if ((widget.item.type == MediaType.filme || widget.item.type == MediaType.jogo) &&
         widget.item.isCompleted) {
@@ -1924,7 +2030,7 @@ class _QuickProgressControlsState extends State<_QuickProgressControls> {
         icon: const Icon(Icons.check_circle_outline),
         onPressed: _incrementProgress,
         tooltip: 'Marcar como completo',
-        color: Colors.green,
+        color: isDark ? const Color(0xFF7BC4A4) : Colors.green,
       );
     }
 
@@ -1938,6 +2044,7 @@ class _QuickProgressControlsState extends State<_QuickProgressControls> {
               ? () => _decrementProgress(amount: 10) 
               : null,
           color: Colors.red[400]!,
+          isDark: isDark,
         ),
         _buildQuickButton(
           label: '-5',
@@ -1945,6 +2052,7 @@ class _QuickProgressControlsState extends State<_QuickProgressControls> {
               ? () => _decrementProgress(amount: 5) 
               : null,
           color: Colors.red[400]!,
+          isDark: isDark,
         ),
         _buildQuickButton(
           label: '-1',
@@ -1952,6 +2060,7 @@ class _QuickProgressControlsState extends State<_QuickProgressControls> {
               ? () => _decrementProgress(amount: 1) 
               : null,
           color: Colors.red[400]!,
+          isDark: isDark,
         ),
         _buildQuickButton(
           label: '+1',
@@ -1959,6 +2068,7 @@ class _QuickProgressControlsState extends State<_QuickProgressControls> {
               ? () => _incrementProgress(amount: 1) 
               : null,
           color: Colors.green[600]!,
+          isDark: isDark,
         ),
         _buildQuickButton(
           label: '+5',
@@ -1966,6 +2076,7 @@ class _QuickProgressControlsState extends State<_QuickProgressControls> {
               ? () => _incrementProgress(amount: 5) 
               : null,
           color: Colors.green[600]!,
+          isDark: isDark,
         ),
         _buildQuickButton(
           label: '+10',
@@ -1973,6 +2084,7 @@ class _QuickProgressControlsState extends State<_QuickProgressControls> {
               ? () => _incrementProgress(amount: 10) 
               : null,
           color: Colors.green[600]!,
+          isDark: isDark,
         ),
       ],
     );
@@ -1982,7 +2094,18 @@ class _QuickProgressControlsState extends State<_QuickProgressControls> {
     required String label,
     required VoidCallback? onPressed,
     required Color color,
+    bool isDark = false,
   }) {
+    // Cores padronizadas para todos os tipos - sempre verde para + e vermelho para -
+    final isPositive = label.startsWith('+');
+    final effectiveColor = isDark 
+        ? (isPositive
+            ? const Color(0xFF7BC4A4) // Verde suave para escuro
+            : const Color(0xFFD67B7B)) // Vermelho suave para escuro
+        : (isPositive
+            ? const Color(0xFF5CB85C) // Verde mais claro e visível para claro
+            : const Color(0xFFE57373)); // Vermelho mais claro para claro
+    
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -1991,11 +2114,19 @@ class _QuickProgressControlsState extends State<_QuickProgressControls> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           decoration: BoxDecoration(
-            color: onPressed != null ? color.withOpacity(0.1) : Colors.grey[200],
+            color: onPressed != null 
+                ? (isDark 
+                    ? effectiveColor.withOpacity(0.08) 
+                    : effectiveColor.withOpacity(0.15)) // Mais opaco no claro para ficar mais visível
+                : (isDark ? Colors.grey[800] : Colors.grey[300]),
             borderRadius: BorderRadius.circular(6),
             border: Border.all(
-              color: onPressed != null ? color.withOpacity(0.3) : Colors.grey[300]!,
-              width: 1,
+              color: onPressed != null 
+                  ? (isDark 
+                      ? effectiveColor.withOpacity(0.2) 
+                      : effectiveColor.withOpacity(0.4)) // Mais opaco no claro
+                  : (isDark ? Colors.grey[700]! : Colors.grey[400]!),
+              width: isDark ? 0.5 : 1,
             ),
           ),
           child: Text(
@@ -2003,7 +2134,11 @@ class _QuickProgressControlsState extends State<_QuickProgressControls> {
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w600,
-              color: onPressed != null ? color : Colors.grey[400],
+              color: onPressed != null 
+                  ? (isDark 
+                      ? effectiveColor.withOpacity(0.7) 
+                      : effectiveColor) // Cor sólida no claro para melhor visibilidade
+                  : (isDark ? Colors.grey[500] : Colors.grey[500]),
             ),
           ),
         ),
@@ -2080,6 +2215,8 @@ class _TotalControlsState extends State<_TotalControls> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
     if (_isUpdating) {
       return const SizedBox(
         width: 16,
@@ -2089,6 +2226,28 @@ class _TotalControlsState extends State<_TotalControls> {
     }
 
     final isSerieOrAnime = widget.item.type == MediaType.serie || widget.item.type == MediaType.anime;
+    final isPodcast = widget.item.type == MediaType.podcast;
+
+    // Cores adaptadas para modo escuro baseadas no tipo
+    Color primaryColor;
+    Color primaryBgColor;
+    Color primaryBorderColor;
+    
+    if (isPodcast) {
+      // Podcast usa vermelho
+      primaryColor = isDark ? const Color(0xFFD67B7B) : Colors.red[700]!;
+      primaryBgColor = isDark ? primaryColor.withOpacity(0.15) : Colors.red[100]!;
+      primaryBorderColor = isDark ? primaryColor.withOpacity(0.3) : Colors.red[300]!;
+    } else {
+      // Outros tipos usam azul
+      primaryColor = isDark ? const Color(0xFF6B9BD6) : Colors.blue[700]!;
+      primaryBgColor = isDark ? primaryColor.withOpacity(0.15) : Colors.blue[100]!;
+      primaryBorderColor = isDark ? primaryColor.withOpacity(0.3) : Colors.blue[300]!;
+    }
+    
+    final purpleColor = isDark ? const Color(0xFF9B7FD9) : Colors.purple[700]!;
+    final purpleBgColor = isDark ? purpleColor.withOpacity(0.15) : Colors.purple[100]!;
+    final purpleBorderColor = isDark ? purpleColor.withOpacity(0.3) : Colors.purple[300]!;
 
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -2102,16 +2261,16 @@ class _TotalControlsState extends State<_TotalControls> {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
-                color: Colors.blue[100],
+                color: primaryBgColor,
                 borderRadius: BorderRadius.circular(4),
-                border: Border.all(color: Colors.blue[300]!, width: 1),
+                border: Border.all(color: primaryBorderColor, width: isDark ? 0.5 : 1),
               ),
               child: Text(
                 '-1',
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
-                  color: Colors.blue[700],
+                  color: isDark ? primaryColor.withOpacity(0.9) : primaryColor,
                 ),
               ),
             ),
@@ -2126,16 +2285,16 @@ class _TotalControlsState extends State<_TotalControls> {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
-                color: Colors.blue[100],
+                color: primaryBgColor,
                 borderRadius: BorderRadius.circular(4),
-                border: Border.all(color: Colors.blue[300]!, width: 1),
+                border: Border.all(color: primaryBorderColor, width: isDark ? 0.5 : 1),
               ),
               child: Text(
                 '+1',
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
-                  color: Colors.blue[700],
+                  color: isDark ? primaryColor.withOpacity(0.9) : primaryColor,
                 ),
               ),
             ),
@@ -2152,16 +2311,16 @@ class _TotalControlsState extends State<_TotalControls> {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
-                  color: Colors.purple[100],
+                  color: purpleBgColor,
                   borderRadius: BorderRadius.circular(4),
-                  border: Border.all(color: Colors.purple[300]!, width: 1),
+                  border: Border.all(color: purpleBorderColor, width: isDark ? 0.5 : 1),
                 ),
                 child: Text(
                   '-1',
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
-                    color: Colors.purple[700],
+                    color: isDark ? purpleColor.withOpacity(0.9) : purpleColor,
                   ),
                 ),
               ),
@@ -2176,16 +2335,16 @@ class _TotalControlsState extends State<_TotalControls> {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
-                  color: Colors.purple[100],
+                  color: purpleBgColor,
                   borderRadius: BorderRadius.circular(4),
-                  border: Border.all(color: Colors.purple[300]!, width: 1),
+                  border: Border.all(color: purpleBorderColor, width: isDark ? 0.5 : 1),
                 ),
                 child: Text(
                   '+1',
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
-                    color: Colors.purple[700],
+                    color: isDark ? purpleColor.withOpacity(0.9) : purpleColor,
                   ),
                 ),
               ),

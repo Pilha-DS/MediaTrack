@@ -317,6 +317,7 @@ class _WebViewScreenState extends State<WebViewScreen> {
                             child: Column(
                               children: recentSearches.take(5).map((history) {
                                 return ListTile(
+                                  key: ValueKey('search_history_${history.id}'),
                                   leading: Icon(
                                     Icons.history,
                                     color: Colors.grey[600],
