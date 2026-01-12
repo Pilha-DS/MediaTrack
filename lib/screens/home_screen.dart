@@ -262,133 +262,26 @@ class _StatCard extends StatelessWidget {
   }
 }
 
-class _MediaItemCard extends StatelessWidget {
+class _MediaItemCard extends StatefulWidget {
   final MediaItem item;
 
   const _MediaItemCard({required this.item});
 
   @override
-  Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(
-          color: _getBorderColor(item.type),
-          width: 1.5,
-        ),
-      ),
-      child: InkWell(
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => MediaDetailScreen(item: item),
-            ),
-          );
-        },
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          item.title,
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: _getTypeColor(item.type).withOpacity(0.2),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Text(
-                                item.typeName,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: _getTypeColor(item.type),
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                            if (item.rating > 0) ...[
-                              const SizedBox(width: 8),
-                              Row(
-                                children: [
-                                  Icon(
-                                    Icons.star,
-                                    size: 16,
-                                    color: Colors.amber[600],
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    item.rating.toStringAsFixed(1),
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.grey[700],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (item.type == MediaType.webtoon)
-                    _WebtoonTotalControls(item: item),
-                  if (item.isCompleted)
-                    Icon(
-                      Icons.check_circle,
-                      color: Colors.green[600],
-                      size: 24,
-                    ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Text(
-                item.progressText,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey[700],
-                ),
-              ),
-              const SizedBox(height: 8),
-              _QuickProgressControls(item: item),
-              const SizedBox(height: 8),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: LinearProgressIndicator(
-                  value: item.progress,
-                  minHeight: 6,
-                  backgroundColor: Colors.grey[200],
-                  valueColor: AlwaysStoppedAnimation<Color>(
-                    _getTypeColor(item.type),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+  State<_MediaItemCard> createState() => _MediaItemCardState();
+}
+
+class _MediaItemCardState extends State<_MediaItemCard> {
+  bool _isUpdating = false;
+  double? _localSliderValue;
+
+  @override
+  void didUpdateWidget(_MediaItemCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Resetar o valor local se o item mudou externamente
+    if (oldWidget.item.id != widget.item.id) {
+      _localSliderValue = null;
+    }
   }
 
   Color _getTypeColor(MediaType type) {
@@ -428,6 +321,218 @@ class _MediaItemCard extends StatelessWidget {
       case MediaType.webtoon:
         return Colors.indigo.shade300;
     }
+  }
+
+  Future<void> _updateProgressFromSlider(double newProgress) async {
+    if (_isUpdating) return;
+    setState(() => _isUpdating = true);
+
+    final updatedItem = MediaService.getItem(widget.item.id);
+    if (updatedItem == null) {
+      setState(() => _isUpdating = false);
+      return;
+    }
+
+    // Converter o progresso (0.0 a 1.0) de volta para o valor atual
+    switch (updatedItem.type) {
+      case MediaType.serie:
+      case MediaType.anime:
+        if (updatedItem.totalSeasons > 0 && updatedItem.totalEpisodes > 0) {
+          int totalAvailable = updatedItem.totalSeasons * updatedItem.totalEpisodes;
+          int targetWatched = (newProgress * totalAvailable).round();
+          
+          if (targetWatched <= 0) {
+            updatedItem.currentSeason = 1;
+            updatedItem.currentEpisode = 1;
+          } else if (targetWatched >= totalAvailable) {
+            updatedItem.currentSeason = updatedItem.totalSeasons;
+            updatedItem.currentEpisode = updatedItem.totalEpisodes;
+            updatedItem.isCompleted = true;
+          } else {
+            updatedItem.currentSeason = ((targetWatched - 1) ~/ updatedItem.totalEpisodes) + 1;
+            updatedItem.currentEpisode = ((targetWatched - 1) % updatedItem.totalEpisodes) + 1;
+            updatedItem.isCompleted = false;
+          }
+          
+          // Garantir que os valores estão dentro dos limites
+          updatedItem.currentSeason = updatedItem.currentSeason.clamp(1, updatedItem.totalSeasons);
+          updatedItem.currentEpisode = updatedItem.currentEpisode.clamp(1, updatedItem.totalEpisodes);
+        }
+        break;
+      case MediaType.livro:
+      case MediaType.webtoon:
+        if (updatedItem.totalPages > 0) {
+          updatedItem.currentPage = (newProgress * updatedItem.totalPages).round().clamp(1, updatedItem.totalPages);
+          if (updatedItem.currentPage >= updatedItem.totalPages) {
+            updatedItem.isCompleted = true;
+          } else {
+            updatedItem.isCompleted = false;
+          }
+        }
+        break;
+      case MediaType.podcast:
+        if (updatedItem.totalEpisodes > 0) {
+          updatedItem.currentEpisode = (newProgress * updatedItem.totalEpisodes).round().clamp(1, updatedItem.totalEpisodes);
+          if (updatedItem.currentEpisode >= updatedItem.totalEpisodes) {
+            updatedItem.isCompleted = true;
+          } else {
+            updatedItem.isCompleted = false;
+          }
+        }
+        break;
+      case MediaType.filme:
+      case MediaType.jogo:
+        updatedItem.isCompleted = newProgress >= 1.0;
+        break;
+    }
+
+    await MediaService.updateItem(updatedItem);
+    if (mounted) {
+      setState(() => _isUpdating = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(
+          color: _getBorderColor(widget.item.type),
+          width: 1.5,
+        ),
+      ),
+      child: InkWell(
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => MediaDetailScreen(item: widget.item),
+            ),
+          );
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          widget.item.title,
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: _getTypeColor(widget.item.type).withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                widget.item.typeName,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: _getTypeColor(widget.item.type),
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                            if (widget.item.rating > 0) ...[
+                              const SizedBox(width: 8),
+                              Row(
+                                children: [
+                                  Icon(
+                                    Icons.star,
+                                    size: 16,
+                                    color: Colors.amber[600],
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    widget.item.rating.toStringAsFixed(1),
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.grey[700],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (widget.item.type == MediaType.webtoon)
+                    _WebtoonTotalControls(item: widget.item),
+                  if (widget.item.isCompleted)
+                    Icon(
+                      Icons.check_circle,
+                      color: Colors.green[600],
+                      size: 24,
+                    ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text(
+                widget.item.progressText,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey[700],
+                ),
+              ),
+              const SizedBox(height: 8),
+              _QuickProgressControls(item: widget.item),
+              const SizedBox(height: 8),
+              // Slider interativo para a barra de progresso
+              SliderTheme(
+                data: SliderTheme.of(context).copyWith(
+                  activeTrackColor: _getTypeColor(widget.item.type),
+                  inactiveTrackColor: Colors.grey[200],
+                  thumbColor: _getTypeColor(widget.item.type),
+                  overlayColor: _getTypeColor(widget.item.type).withOpacity(0.2),
+                  thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
+                  trackHeight: 6,
+                ),
+                child: Slider(
+                  value: (_localSliderValue ?? widget.item.progress).clamp(0.0, 1.0),
+                  onChanged: _isUpdating
+                      ? null
+                      : (double value) {
+                          setState(() {
+                            _localSliderValue = value;
+                          });
+                          _updateProgressFromSlider(value);
+                        },
+                  onChangeEnd: (double value) {
+                    // Limpar o valor local após o arrasto terminar
+                    setState(() {
+                      _localSliderValue = null;
+                    });
+                  },
+                  min: 0.0,
+                  max: 1.0,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 
